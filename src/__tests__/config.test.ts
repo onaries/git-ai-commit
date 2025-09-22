@@ -79,6 +79,8 @@ describe('ConfigService', () => {
 
     it('should use default model when not specified', () => {
       process.env.OPENAI_API_KEY = 'test-key';
+      delete process.env.OPENAI_MODEL;
+      delete process.env.AI_MODEL;
 
       const config = ConfigService.getEnvConfig();
 

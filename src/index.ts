@@ -3,6 +3,7 @@
 import { Command } from 'commander';
 import { CommitCommand } from './commands/commit';
 import { ConfigCommand } from './commands/configCommand';
+import { TagCommand } from './commands/tag';
 
 const program = new Command();
 
@@ -13,8 +14,10 @@ program
 
 const commitCommand = new CommitCommand();
 const configCommand = new ConfigCommand();
+const tagCommand = new TagCommand();
 
 program.addCommand(commitCommand.getCommand());
 program.addCommand(configCommand.getCommand());
+program.addCommand(tagCommand.getCommand());
 
 program.parse();

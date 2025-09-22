@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { generateTagPrompt } from '../prompts/tag';
 
 export interface AIServiceConfig {
   apiKey: string;
@@ -9,6 +10,12 @@ export interface AIServiceConfig {
 export interface CommitGenerationResult {
   success: boolean;
   message?: string;
+  error?: string;
+}
+
+export interface TagGenerationResult {
+  success: boolean;
+  notes?: string;
   error?: string;
 }
 
@@ -115,6 +122,57 @@ Commit message:`
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to generate commit message'
+      };
+    }
+  }
+
+  async generateTagNotes(tagName: string, commitLog: string): Promise<TagGenerationResult> {
+    try {
+      console.log('Sending request to AI API for tag notes...');
+      console.log('Model:', this.model);
+      console.log('Base URL:', this.openai.baseURL);
+
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an experienced release manager. Write concise, user-focused release notes summarizing recent commits. Use markdown bullet points and group similar work together when possible.'
+          },
+          {
+            role: 'user',
+            content: generateTagPrompt(tagName, commitLog)
+          }
+        ],
+        max_tokens: 300,
+        temperature: 0.2
+      });
+
+      const choice = response.choices[0];
+      const message = choice?.message?.content?.trim();
+
+      const messageAny = choice?.message as any;
+      const reasoningMessage = messageAny?.reasoning_content?.trim();
+
+      const finalNotes = message || reasoningMessage;
+
+      if (!finalNotes) {
+        console.log('No notes found in response');
+        return {
+          success: false,
+          error: 'No tag notes generated'
+        };
+      }
+
+      return {
+        success: true,
+        notes: finalNotes.trim()
+      };
+    } catch (error) {
+      console.error('API Error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate tag notes'
       };
     }
   }
