@@ -1,0 +1,121 @@
+import OpenAI from 'openai';
+
+export interface AIServiceConfig {
+  apiKey: string;
+  baseURL?: string;
+  model?: string;
+}
+
+export interface CommitGenerationResult {
+  success: boolean;
+  message?: string;
+  error?: string;
+}
+
+export class AIService {
+  private openai: OpenAI;
+  private model: string;
+
+  constructor(config: AIServiceConfig) {
+    this.openai = new OpenAI({
+      apiKey: config.apiKey,
+      baseURL: config.baseURL
+    });
+    this.model = config.model || 'zai-org/GLM-4.5-FP8';
+  }
+
+  async generateCommitMessage(diff: string): Promise<CommitGenerationResult> {
+    try {
+      console.log('Sending request to AI API...');
+      console.log('Model:', this.model);
+      console.log('Base URL:', this.openai.baseURL);
+      
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: 'You are an expert developer who writes clear, concise, and meaningful git commit messages following conventional commit format. Generate ONLY the commit message in the format "type: description" without any additional explanation or reasoning.'
+          },
+          {
+            role: 'user',
+            content: `Based on the following git diff, generate a conventional commit message. Use one of these types: feat, fix, docs, style, refactor, test, chore, build, ci, perf, revert. Format: "type: description"
+
+Git diff:
+${diff}
+
+Commit message:`
+          }
+        ],
+        max_tokens: 30,
+        temperature: 0.1
+      });
+
+      console.log('API Response received:', JSON.stringify(response, null, 2));
+
+      const choice = response.choices[0];
+      const message = choice?.message?.content?.trim();
+      
+      // Handle reasoning content if available (type assertion for custom API response)
+      const messageAny = choice?.message as any;
+      const reasoningMessage = messageAny?.reasoning_content?.trim();
+      
+      // Try to extract commit message from reasoning content if regular content is null
+      let finalMessage = message;
+      if (!finalMessage && reasoningMessage) {
+        // Look for commit message pattern in reasoning content
+        const commitMatch = reasoningMessage.match(/(?:feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert): .+/);
+        if (commitMatch) {
+          finalMessage = commitMatch[0].trim();
+        } else {
+          // Look for any line that starts with conventional commit types
+          const typeMatch = reasoningMessage.match(/(?:feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)[^:]*: .+/);
+          if (typeMatch) {
+            finalMessage = typeMatch[0].trim();
+          } else {
+            // Try to find a short descriptive line
+            const lines = reasoningMessage.split('\n').filter((line: string) => line.trim().length > 0);
+            const shortLine = lines.find((line: string) => line.length < 100 && line.includes('version'));
+            finalMessage = shortLine ? `chore: ${shortLine.trim()}` : `chore: update files`;
+          }
+        }
+      }
+      
+      if (!finalMessage) {
+        console.log('No message found in response');
+        return {
+          success: false,
+          error: 'No commit message generated'
+        };
+      }
+
+      // Clean up the message
+      finalMessage = finalMessage.replace(/^(The commit message is:|Commit message:|Message:)\s*/, '');
+      
+      // Ensure it follows conventional commit format
+      if (!finalMessage.match(/^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?: .+/)) {
+        // If it doesn't match the format, try to fix it
+        if (finalMessage.includes('version') || finalMessage.includes('update')) {
+          finalMessage = `chore: ${finalMessage}`;
+        } else if (finalMessage.includes('feature') || finalMessage.includes('add')) {
+          finalMessage = `feat: ${finalMessage}`;
+        } else if (finalMessage.includes('fix') || finalMessage.includes('bug')) {
+          finalMessage = `fix: ${finalMessage}`;
+        } else {
+          finalMessage = `chore: ${finalMessage}`;
+        }
+      }
+
+      return {
+        success: true,
+        message: finalMessage
+      };
+    } catch (error) {
+      console.error('API Error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate commit message'
+      };
+    }
+  }
+}
