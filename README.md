@@ -48,9 +48,10 @@ npm run dev -- commit
 
 Set the following variables (e.g., in a local `.env` file) before using the CLI:
 
-- `CHUTES_API_TOKEN` (if using Chutes)
-- `OPENAI_API_KEY` or `AI_API_KEY`
-- Optional overrides: `OPENAI_BASE_URL` / `AI_BASE_URL`, `OPENAI_MODEL` / `AI_MODEL`
+- `AI_MODE` controls which provider defaults to: `openai` prioritises `OPENAI_*` vars; any other value (or unset) uses the `AI_*` vars first before falling back to OpenAI then Chutes.
+- Credentials: `AI_API_KEY`, `OPENAI_API_KEY`, or `CHUTES_API_TOKEN` (checked in that order when `AI_MODE` is not `openai`).
+- Base URLs: `AI_BASE_URL` or `OPENAI_BASE_URL` (priority matches the selected mode).
+- Models: `AI_MODEL` or `OPENAI_MODEL` (priority matches the selected mode).
 
 ## Development Commands
 

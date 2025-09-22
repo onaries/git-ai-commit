@@ -7,16 +7,27 @@ import { AIService } from '../commands/ai';
 import { GitService } from '../commands/git';
 import { ConfigService } from '../commands/config';
 
+const hasApiKey = Boolean(
+  process.env.CHUTES_API_TOKEN ||
+  process.env.OPENAI_API_KEY ||
+  process.env.AI_API_KEY
+);
+
 describe('Integration Tests with Real API', () => {
   let aiService: AIService;
 
   beforeEach(() => {
-    // Get config from environment
+    if (!hasApiKey) {
+      return;
+    }
+
     const config = ConfigService.getEnvConfig();
     aiService = new AIService(config);
   });
 
-  describe('Real API Integration', () => {
+  const describeIfApiKey = hasApiKey ? describe : describe.skip;
+
+  describeIfApiKey('Real API Integration', () => {
     it('should generate commit message using real API', async () => {
       // Sample git diff for testing
       const sampleDiff = `diff --git a/package.json b/package.json
@@ -92,7 +103,9 @@ index abc123..def456 100644
   });
 
   describe('Configuration Integration', () => {
-    it('should load configuration from environment', () => {
+    const itIfApiKey = hasApiKey ? it : it.skip;
+
+    itIfApiKey('should load configuration from environment', () => {
       const config = ConfigService.getEnvConfig();
 
       console.log('Loaded config:', {
@@ -108,7 +121,7 @@ index abc123..def456 100644
       expect(config.model).toBeDefined();
     });
 
-    it('should validate configuration successfully', () => {
+    itIfApiKey('should validate configuration successfully', () => {
       const config = ConfigService.getEnvConfig();
       
       expect(() => ConfigService.validateConfig(config)).not.toThrow();

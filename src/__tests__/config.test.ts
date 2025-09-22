@@ -23,7 +23,8 @@ describe('ConfigService', () => {
       expect(config).toEqual({
         apiKey: 'chutes-api-key',
         baseURL: 'https://api.test.com',
-        model: 'gpt-4'
+        model: 'gpt-4',
+        mode: 'custom'
       });
     });
 
@@ -37,7 +38,8 @@ describe('ConfigService', () => {
       expect(config).toEqual({
         apiKey: 'test-api-key',
         baseURL: 'https://api.test.com',
-        model: 'gpt-4'
+        model: 'gpt-4',
+        mode: 'custom'
       });
     });
 
@@ -51,30 +53,61 @@ describe('ConfigService', () => {
       expect(config).toEqual({
         apiKey: 'fallback-api-key',
         baseURL: 'https://fallback.test.com',
-        model: 'claude-3'
+        model: 'claude-3',
+        mode: 'custom'
       });
     });
 
-    it('should use CHUTES_API_TOKEN over other variables when all exist', () => {
-      process.env.CHUTES_API_TOKEN = 'chutes-key';
-      process.env.OPENAI_API_KEY = 'openai-key';
+    it('should prefer AI variables over others in custom mode', () => {
       process.env.AI_API_KEY = 'ai-key';
+      process.env.OPENAI_API_KEY = 'openai-key';
+      process.env.CHUTES_API_TOKEN = 'chutes-key';
+      process.env.AI_BASE_URL = 'ai-url';
+      process.env.OPENAI_BASE_URL = 'openai-url';
 
       const config = ConfigService.getEnvConfig();
 
-      expect(config.apiKey).toBe('chutes-key');
+      expect(config).toEqual({
+        apiKey: 'ai-key',
+        baseURL: 'ai-url',
+        model: 'zai-org/GLM-4.5-FP8',
+        mode: 'custom'
+      });
     });
 
-    it('should use OPENAI variables over AI variables when both exist', () => {
+    it('should use OPENAI variables when mode is openai', () => {
+      process.env.AI_MODE = 'openai';
       process.env.OPENAI_API_KEY = 'openai-key';
       process.env.AI_API_KEY = 'ai-key';
       process.env.OPENAI_BASE_URL = 'openai-url';
       process.env.AI_BASE_URL = 'ai-url';
+      process.env.OPENAI_MODEL = 'gpt-4';
+      process.env.AI_MODEL = 'claude-3';
 
       const config = ConfigService.getEnvConfig();
 
-      expect(config.apiKey).toBe('openai-key');
-      expect(config.baseURL).toBe('openai-url');
+      expect(config).toEqual({
+        apiKey: 'openai-key',
+        baseURL: 'openai-url',
+        model: 'gpt-4',
+        mode: 'openai'
+      });
+    });
+
+    it('should fallback to AI variables in openai mode when OPENAI values missing', () => {
+      process.env.AI_MODE = 'openai';
+      process.env.AI_API_KEY = 'ai-key';
+      process.env.AI_BASE_URL = 'ai-url';
+      process.env.AI_MODEL = 'claude-3';
+
+      const config = ConfigService.getEnvConfig();
+
+      expect(config).toEqual({
+        apiKey: 'ai-key',
+        baseURL: 'ai-url',
+        model: 'claude-3',
+        mode: 'openai'
+      });
     });
 
     it('should use default model when not specified', () => {
@@ -85,11 +118,13 @@ describe('ConfigService', () => {
       const config = ConfigService.getEnvConfig();
 
       expect(config.model).toBe('zai-org/GLM-4.5-FP8');
+      expect(config.mode).toBe('custom');
     });
 
     it('should throw error when no API key is provided', () => {
       delete process.env.OPENAI_API_KEY;
       delete process.env.AI_API_KEY;
+      delete process.env.CHUTES_API_TOKEN;
 
       expect(() => ConfigService.getEnvConfig()).toThrow('API key is required');
     });

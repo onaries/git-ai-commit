@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { generateCommitPrompt } from '../prompts/commit';
 import { generateTagPrompt } from '../prompts/tag';
 
 export interface AIServiceConfig {
@@ -42,19 +43,17 @@ export class AIService {
         messages: [
           {
             role: 'system',
-            content: 'You are an expert developer who writes clear, concise, and meaningful git commit messages following conventional commit format. Generate ONLY the commit message in the format "type: description" without any additional explanation or reasoning.'
+            content: generateCommitPrompt(
+              '',
+              'Git diff will be provided separately in the user message.'
+            )
           },
           {
             role: 'user',
-            content: `Based on the following git diff, generate a conventional commit message. Use one of these types: feat, fix, docs, style, refactor, test, chore, build, ci, perf, revert. Format: "type: description"
-
-Git diff:
-${diff}
-
-Commit message:`
+            content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 30,
+        max_tokens: 3000,
         temperature: 0.1
       });
 
@@ -137,14 +136,14 @@ Commit message:`
         messages: [
           {
             role: 'system',
-            content: 'You are an experienced release manager. Write concise, user-focused release notes summarizing recent commits. Use markdown bullet points and group similar work together when possible.'
+            content: generateTagPrompt(tagName)
           },
           {
             role: 'user',
-            content: generateTagPrompt(tagName, commitLog)
+            content: `Commit log:\n${commitLog}`
           }
         ],
-        max_tokens: 300,
+        max_tokens: 3000,
         temperature: 0.2
       });
 

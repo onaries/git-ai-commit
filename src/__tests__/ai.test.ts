@@ -1,4 +1,5 @@
 import { AIService } from '../commands/ai';
+import { generateCommitPrompt } from '../prompts/commit';
 import OpenAI from 'openai';
 
 jest.mock('openai');
@@ -53,14 +54,17 @@ describe('AIService', () => {
         messages: [
           {
             role: 'system',
-            content: expect.stringContaining('Generate ONLY the commit message in the format "type: description"')
+            content: generateCommitPrompt(
+              '',
+              'Git diff will be provided separately in the user message.'
+            )
           },
           {
             role: 'user',
-            content: expect.stringContaining(diff)
+            content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 30,
+        max_tokens: 120,
         temperature: 0.1
       });
     });
