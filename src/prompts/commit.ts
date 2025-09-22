@@ -54,10 +54,12 @@ Generate commit messages following this exact structure:
 - Keep Korean messages concise and follow the same 50/72-character limits
 
 ### Body Guidelines (Optional)
-- Start one blank line after description
-- Explain the "what" and "why", not the "how"
-- Wrap at 72 characters per line
-- Use for complex changes requiring explanation
+- Insert one blank line after the description and express additional details as
+  markdown bullet points (\`- \`) written in Korean.
+- Each bullet should explain the "what" and "why", not the "how".
+- Wrap at 72 characters per line and keep bullets concise.
+- Use the bullet body only for complex changes that need clarification; omit it
+  when the summary line is sufficient.
 
 ### Footer Guidelines (Optional)
 - Start one blank line after body
