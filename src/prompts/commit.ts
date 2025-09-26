@@ -45,13 +45,13 @@ Generate commit messages following this exact structure:
 - Use imperative mood ("add" not "added" or "adds")
 - Start with lowercase letter
 - No period at the end
-- Maximum 50 characters
 - Be concise but descriptive
+- Must be written as a single line without line breaks
 
 ## Korean Language Requirement
 - All commit messages MUST be written in Korean (한글)
 - Description, body, and footer text must use Korean
-- Keep Korean messages concise and follow the same 50/72-character limits
+- Keep Korean messages concise
 
 ### Body Guidelines (Optional)
 - Insert one blank line after the description and express additional details as
