@@ -48,10 +48,20 @@ export class GitService {
   
   static async createCommit(message: string): Promise<boolean> {
     try {
-      await execAsync(`git commit -m "${message}"`);
+      await execFileAsync('git', ['commit', '-m', message]);
       return true;
     } catch (error) {
       console.error('Failed to create commit:', error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async push(): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['push']);
+      return true;
+    } catch (error) {
+      console.error('Failed to push to remote:', error instanceof Error ? error.message : error);
       return false;
     }
   }

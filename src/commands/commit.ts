@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import readline from 'readline';
 import { GitService, GitDiffResult } from './git';
 import { AIService, AIServiceConfig } from './ai';
 import { ConfigService } from './config';
@@ -8,6 +9,7 @@ export interface CommitOptions {
   baseURL?: string;
   model?: string;
   commit?: boolean;
+  push?: boolean;
 }
 
 export class CommitCommand {
@@ -20,6 +22,7 @@ export class CommitCommand {
       .option('-b, --base-url <url>', 'Custom API base URL (overrides env var)')
       .option('-m, --model <model>', 'Model to use (overrides env var)')
       .option('-c, --commit', 'Automatically create commit with generated message')
+      .option('-p, --push', 'Push current branch after creating the commit (implies --commit)')
       .action(this.handleCommit.bind(this));
   }
 
@@ -66,12 +69,32 @@ export class CommitCommand {
       console.log('\nGenerated commit message:');
       console.log(aiResult.message);
 
-      if (options.commit) {
+      const shouldCommit = Boolean(options.commit || options.push);
+
+      if (shouldCommit) {
+        const confirmed = await this.confirmCommit();
+
+        if (!confirmed) {
+          console.log('Commit cancelled by user.');
+          return;
+        }
+
         console.log('\nCreating commit...');
         const commitSuccess = await GitService.createCommit(aiResult.message!);
         
         if (commitSuccess) {
           console.log('✅ Commit created successfully!');
+          if (options.push) {
+            console.log('Pushing to remote...');
+            const pushSuccess = await GitService.push();
+
+            if (pushSuccess) {
+              console.log('✅ Push completed successfully!');
+            } else {
+              console.error('❌ Failed to push to remote');
+              process.exit(1);
+            }
+          }
         } else {
           console.error('❌ Failed to create commit');
           process.exit(1);
@@ -81,6 +104,22 @@ export class CommitCommand {
       console.error('Error:', error instanceof Error ? error.message : error);
       process.exit(1);
     }
+  }
+
+  private async confirmCommit(): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question('Proceed with git commit? (y/n): ', resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
   }
 
   getCommand(): Command {
