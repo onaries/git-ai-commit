@@ -56,7 +56,8 @@ describe('AIService', () => {
             role: 'system',
             content: generateCommitPrompt(
               '',
-              'Git diff will be provided separately in the user message.'
+              'Git diff will be provided separately in the user message.',
+              'ko'
             )
           },
           {
@@ -64,7 +65,7 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 120,
+        max_tokens: 3000,
         temperature: 0.1
       });
     });

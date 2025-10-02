@@ -1,7 +1,43 @@
+export type CommitPromptLanguage = 'ko' | 'en';
+
 export const generateCommitPrompt = (
   gitContext: string,
-  customInstructions = ''
-): string => `# Conventional Commit Message Generator
+  customInstructions = '',
+  language: CommitPromptLanguage = 'ko'
+): string => {
+  const languageRequirement = language === 'ko'
+    ? `## Korean Language Requirement
+- All commit messages MUST be written in Korean (한글)
+- Description, body, and footer text must use Korean
+- Keep Korean messages concise`
+    : `## English Language Requirement
+- All commit messages MUST be written in English
+- Description, body, and footer text must use English
+- Keep the tone concise and professional`;
+
+  const bodyGuidelines = language === 'ko'
+    ? `### Body Guidelines (Optional)
+- Insert one blank line after the description and express additional details as
+  markdown bullet points (\`- \`) written in Korean.
+- Each bullet should explain the "what" and "why", not the "how".
+- Wrap at 72 characters per line and keep bullets concise.
+- Use the bullet body only for complex changes that need clarification; omit it
+  when the summary line is sufficient.`
+    : `### Body Guidelines (Optional)
+- Insert one blank line after the description and use markdown bullet points (\`- \`) in English.
+- Each bullet should explain the "what" and "why", not the "how".
+- Wrap at 72 characters per line and keep bullets concise.
+- Include a body only for complex changes that need clarification.`;
+
+  const footerGuidelines = language === 'ko'
+    ? `### Footer Guidelines (Optional)
+- Start one blank line after body
+- **Breaking Changes**: \`BREAKING CHANGE: description\``
+    : `### Footer Guidelines (Optional)
+- Start one blank line after the body
+- **Breaking Changes**: \`BREAKING CHANGE: description\``;
+
+  return `# Conventional Commit Message Generator
 ## System Instructions
 You are an expert Git commit message generator that creates conventional commit messages based on staged changes. Analyze the provided git diff output and generate appropriate conventional commit messages following the specification.
 
@@ -48,22 +84,11 @@ Generate commit messages following this exact structure:
 - Be concise but descriptive
 - Must be written as a single line without line breaks
 
-## Korean Language Requirement
-- All commit messages MUST be written in Korean (한글)
-- Description, body, and footer text must use Korean
-- Keep Korean messages concise
+${languageRequirement}
 
-### Body Guidelines (Optional)
-- Insert one blank line after the description and express additional details as
-  markdown bullet points (\`- \`) written in Korean.
-- Each bullet should explain the "what" and "why", not the "how".
-- Wrap at 72 characters per line and keep bullets concise.
-- Use the bullet body only for complex changes that need clarification; omit it
-  when the summary line is sufficient.
+${bodyGuidelines}
 
-### Footer Guidelines (Optional)
-- Start one blank line after body
-- **Breaking Changes**: \`BREAKING CHANGE: description\`
+${footerGuidelines}
 
 ## Analysis Instructions
 When analyzing staged changes:
@@ -77,3 +102,4 @@ When analyzing staged changes:
 For significant changes, include a detailed body explaining the changes.
 
 Return ONLY the commit message in the conventional format, nothing else.`;
+};

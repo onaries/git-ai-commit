@@ -1,11 +1,13 @@
 import OpenAI from 'openai';
 import { generateCommitPrompt } from '../prompts/commit';
 import { generateTagPrompt } from '../prompts/tag';
+import { SupportedLanguage } from './config';
 
 export interface AIServiceConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
+  language?: SupportedLanguage;
 }
 
 export interface CommitGenerationResult {
@@ -23,6 +25,7 @@ export interface TagGenerationResult {
 export class AIService {
   private openai: OpenAI;
   private model: string;
+  private language: SupportedLanguage;
 
   constructor(config: AIServiceConfig) {
     this.openai = new OpenAI({
@@ -30,6 +33,7 @@ export class AIService {
       baseURL: config.baseURL
     });
     this.model = config.model || 'zai-org/GLM-4.5-FP8';
+    this.language = config.language || 'ko';
   }
 
   async generateCommitMessage(diff: string): Promise<CommitGenerationResult> {
@@ -45,7 +49,8 @@ export class AIService {
             role: 'system',
             content: generateCommitPrompt(
               '',
-              'Git diff will be provided separately in the user message.'
+              'Git diff will be provided separately in the user message.',
+              this.language
             )
           },
           {
@@ -136,7 +141,7 @@ export class AIService {
         messages: [
           {
             role: 'system',
-            content: generateTagPrompt(tagName)
+            content: generateTagPrompt(tagName, '', this.language)
           },
           {
             role: 'user',

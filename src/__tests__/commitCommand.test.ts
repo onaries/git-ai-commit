@@ -21,7 +21,7 @@ jest.mock('../commands/ai', () => ({
 
 jest.mock('../commands/config', () => ({
   ConfigService: {
-    getEnvConfig: jest.fn(),
+    getConfig: jest.fn(),
     validateConfig: jest.fn()
   }
 }));
@@ -32,10 +32,12 @@ describe('CommitCommand', () => {
   beforeEach(() => {
     jest.clearAllMocks();
 
-    (ConfigService.getEnvConfig as jest.Mock).mockReturnValue({
+    (ConfigService.getConfig as jest.Mock).mockReturnValue({
       apiKey: 'env-key',
       baseURL: 'https://api.test',
-      model: 'test-model'
+      model: 'test-model',
+      language: 'ko',
+      autoPush: false
     });
 
     (ConfigService.validateConfig as jest.Mock).mockReturnValue(undefined);
@@ -57,7 +59,7 @@ describe('CommitCommand', () => {
 
   const createCommand = () => new CommitCommand();
 
-  it('should create commit after user confirmation when commit option is set', async () => {
+  it('should create commit after user confirmation', async () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
@@ -65,7 +67,7 @@ describe('CommitCommand', () => {
       .spyOn(command as any, 'confirmCommit')
       .mockResolvedValue(true);
 
-    await (command as any).handleCommit({ commit: true });
+    await (command as any).handleCommit({});
 
     expect(confirmSpy).toHaveBeenCalled();
     expect(GitService.createCommit).toHaveBeenCalledWith('feat: test commit');
@@ -77,7 +79,7 @@ describe('CommitCommand', () => {
     const command = createCommand();
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
 
-    await (command as any).handleCommit({ commit: true });
+    await (command as any).handleCommit({});
 
     expect(GitService.createCommit).not.toHaveBeenCalled();
     expect(GitService.push).not.toHaveBeenCalled();
@@ -104,9 +106,31 @@ describe('CommitCommand', () => {
     const command = createCommand();
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
 
-    await (command as any).handleCommit({ commit: true });
+    await (command as any).handleCommit({});
 
     expect(GitService.createCommit).toHaveBeenCalledWith('feat: test commit');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('should push automatically when autoPush is enabled in config', async () => {
+    (GitService.createCommit as jest.Mock).mockResolvedValue(true);
+    (GitService.push as jest.Mock).mockResolvedValue(true);
+
+    (ConfigService.getConfig as jest.Mock).mockReturnValueOnce({
+      apiKey: 'env-key',
+      baseURL: 'https://api.test',
+      model: 'test-model',
+      language: 'ko',
+      autoPush: true
+    });
+
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({});
+
+    expect(GitService.createCommit).toHaveBeenCalledWith('feat: test commit');
+    expect(GitService.push).toHaveBeenCalledTimes(1);
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });

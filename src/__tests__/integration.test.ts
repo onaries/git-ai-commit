@@ -21,8 +21,14 @@ describe('Integration Tests with Real API', () => {
       return;
     }
 
-    const config = ConfigService.getEnvConfig();
-    aiService = new AIService(config);
+    const config = ConfigService.getConfig();
+    ConfigService.validateConfig(config);
+    aiService = new AIService({
+      apiKey: config.apiKey!,
+      baseURL: config.baseURL,
+      model: config.model,
+      language: config.language
+    });
   });
 
   const describeIfApiKey = hasApiKey ? describe : describe.skip;
@@ -81,7 +87,7 @@ index abc123..def456 100644
         expect(result.error).toBeDefined();
         expect(result.error!.length).toBeGreaterThan(0);
       }
-    }, 30000);
+    }, 60000);
   });
 
   describe('Git Service Integration', () => {
@@ -106,23 +112,26 @@ index abc123..def456 100644
     const itIfApiKey = hasApiKey ? it : it.skip;
 
     itIfApiKey('should load configuration from environment', () => {
-      const config = ConfigService.getEnvConfig();
+      const config = ConfigService.getConfig();
+      ConfigService.validateConfig(config);
 
       console.log('Loaded config:', {
         apiKey: config.apiKey ? `${config.apiKey.slice(0, 8)}...${config.apiKey.slice(-4)}` : 'undefined',
         baseURL: config.baseURL || 'undefined',
-        model: config.model || 'undefined'
+        model: config.model || 'undefined',
+        language: config.language,
+        autoPush: config.autoPush
       });
 
       expect(config.apiKey).toBeDefined();
-      expect(config.apiKey.length).toBeGreaterThan(0);
+      expect(config.apiKey!.length).toBeGreaterThan(0);
       
       // Should have model from .env or default
       expect(config.model).toBeDefined();
     });
 
     itIfApiKey('should validate configuration successfully', () => {
-      const config = ConfigService.getEnvConfig();
+      const config = ConfigService.getConfig();
       
       expect(() => ConfigService.validateConfig(config)).not.toThrow();
     });

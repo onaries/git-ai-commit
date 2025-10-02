@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import readline from 'readline';
 import { AIService, AIServiceConfig } from './ai';
 import { ConfigService } from './config';
 import { GitService } from './git';
@@ -29,19 +30,22 @@ export class TagCommand {
   }
 
   private resolveAIConfig(options: TagOptions): AIServiceConfig {
-    if (options.apiKey) {
-      return {
-        apiKey: options.apiKey,
-        baseURL: options.baseUrl,
-        model: options.model
-      };
-    }
+    const storedConfig = ConfigService.getConfig();
 
-    const envConfig = ConfigService.getEnvConfig();
+    const mergedApiKey = options.apiKey || storedConfig.apiKey;
+    const mergedBaseURL = options.baseUrl || storedConfig.baseURL;
+    const mergedModel = options.model || storedConfig.model;
+
+    ConfigService.validateConfig({
+      apiKey: mergedApiKey,
+      language: storedConfig.language
+    });
+
     return {
-      apiKey: envConfig.apiKey,
-      baseURL: options.baseUrl || envConfig.baseURL,
-      model: options.model || envConfig.model
+      apiKey: mergedApiKey!,
+      baseURL: mergedBaseURL,
+      model: mergedModel,
+      language: storedConfig.language
     };
   }
 
@@ -111,6 +115,36 @@ export class TagCommand {
     console.log(`✅ Tag ${trimmedName} created successfully!`);
     console.log('\nTag message:\n');
     console.log(tagMessage);
+
+    const shouldPush = await this.confirmTagPush(trimmedName);
+
+    if (shouldPush) {
+      console.log(`Pushing tag ${trimmedName} to remote...`);
+      const pushSuccess = await GitService.pushTag(trimmedName);
+
+      if (pushSuccess) {
+        console.log(`✅ Tag ${trimmedName} pushed successfully!`);
+      } else {
+        console.error('❌ Failed to push tag to remote');
+        process.exit(1);
+      }
+    }
+  }
+
+  private async confirmTagPush(tagName: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Push tag ${tagName} to remote? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
   }
 
   getCommand(): Command {

@@ -66,6 +66,16 @@ export class GitService {
     }
   }
 
+  static async pushTag(tagName: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['push', 'origin', tagName]);
+      return true;
+    } catch (error) {
+      console.error('Failed to push tag to remote:', error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
   static async getLatestTag(): Promise<GitTagResult> {
     try {
       const { stdout } = await execAsync('git describe --tags --abbrev=0');
