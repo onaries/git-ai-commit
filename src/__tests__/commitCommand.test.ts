@@ -86,6 +86,25 @@ describe('CommitCommand', () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 
+  it('should output message only without git actions when message-only option is set', async () => {
+    const command = createCommand();
+    const confirmSpy = jest.spyOn(command as any, 'confirmCommit');
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+
+    try {
+      await (command as any).handleCommit({ messageOnly: true });
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(GitService.createCommit).not.toHaveBeenCalled();
+      expect(GitService.push).not.toHaveBeenCalled();
+      expect(logSpy).toHaveBeenCalledTimes(1);
+      expect(logSpy).toHaveBeenCalledWith('feat: test commit');
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it('should commit and push when push option is provided', async () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
     (GitService.push as jest.Mock).mockResolvedValue(true);

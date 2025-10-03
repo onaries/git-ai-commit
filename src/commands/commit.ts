@@ -9,6 +9,7 @@ export interface CommitOptions {
   baseURL?: string;
   model?: string;
   push?: boolean;
+  messageOnly?: boolean;
 }
 
 export class CommitCommand {
@@ -19,7 +20,8 @@ export class CommitCommand {
       .description('Generate AI-powered commit message')
       .option('-k, --api-key <key>', 'OpenAI API key (overrides env var)')
       .option('-b, --base-url <url>', 'Custom API base URL (overrides env var)')
-      .option('-m, --model <model>', 'Model to use (overrides env var)')
+      .option('--model <model>', 'Model to use (overrides env var)')
+      .option('-m, --message-only', 'Output only the generated commit message and skip git actions')
       .option('-p, --push', 'Push current branch after creating the commit (implies --commit)')
       .action(this.handleCommit.bind(this));
   }
@@ -31,6 +33,13 @@ export class CommitCommand {
       const mergedApiKey = options.apiKey || existingConfig.apiKey;
       const mergedBaseURL = options.baseURL || existingConfig.baseURL;
       const mergedModel = options.model || existingConfig.model;
+      const messageOnly = Boolean(options.messageOnly);
+
+      const log = (...args: unknown[]) => {
+        if (!messageOnly) {
+          console.log(...args);
+        }
+      };
 
       ConfigService.validateConfig({
         apiKey: mergedApiKey,
@@ -44,7 +53,7 @@ export class CommitCommand {
         language: existingConfig.language
       };
 
-      console.log('Getting staged changes...');
+      log('Getting staged changes...');
       
       const diffResult: GitDiffResult = await GitService.getStagedDiff();
       
@@ -53,7 +62,7 @@ export class CommitCommand {
         process.exit(1);
       }
 
-      console.log('Generating commit message...');
+      log('Generating commit message...');
       
       const aiService = new AIService(aiConfig);
       const aiResult = await aiService.generateCommitMessage(diffResult.diff!);
@@ -61,6 +70,16 @@ export class CommitCommand {
       if (!aiResult.success) {
         console.error('Error:', aiResult.error);
         process.exit(1);
+      }
+
+      if (typeof aiResult.message !== 'string') {
+        console.error('Error: Failed to generate commit message');
+        process.exit(1);
+      }
+
+      if (messageOnly) {
+        console.log(aiResult.message);
+        return;
       }
 
       console.log('\nGenerated commit message:');
