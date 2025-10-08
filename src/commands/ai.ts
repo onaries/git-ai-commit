@@ -8,6 +8,7 @@ export interface AIServiceConfig {
   baseURL?: string;
   model?: string;
   language?: SupportedLanguage;
+  verbose?: boolean;
 }
 
 export interface CommitGenerationResult {
@@ -26,6 +27,7 @@ export class AIService {
   private openai: OpenAI;
   private model: string;
   private language: SupportedLanguage;
+  private verbose: boolean;
 
   constructor(config: AIServiceConfig) {
     this.openai = new OpenAI({
@@ -34,13 +36,20 @@ export class AIService {
     });
     this.model = config.model || 'zai-org/GLM-4.5-FP8';
     this.language = config.language || 'ko';
+    this.verbose = config.verbose ?? true;
+  }
+
+  private debugLog(...args: unknown[]): void {
+    if (this.verbose) {
+      console.log(...args);
+    }
   }
 
   async generateCommitMessage(diff: string): Promise<CommitGenerationResult> {
     try {
-      console.log('Sending request to AI API...');
-      console.log('Model:', this.model);
-      console.log('Base URL:', this.openai.baseURL);
+      this.debugLog('Sending request to AI API...');
+      this.debugLog('Model:', this.model);
+      this.debugLog('Base URL:', this.openai.baseURL);
       
       const response = await this.openai.chat.completions.create({
         model: this.model,
@@ -62,7 +71,7 @@ export class AIService {
         temperature: 0.1
       });
 
-      console.log('API Response received:', JSON.stringify(response, null, 2));
+      this.debugLog('API Response received:', JSON.stringify(response, null, 2));
 
       const choice = response.choices[0];
       const message = choice?.message?.content?.trim();
@@ -93,7 +102,7 @@ export class AIService {
       }
       
       if (!finalMessage) {
-        console.log('No message found in response');
+        this.debugLog('No message found in response');
         return {
           success: false,
           error: 'No commit message generated'
@@ -132,9 +141,9 @@ export class AIService {
 
   async generateTagNotes(tagName: string, commitLog: string): Promise<TagGenerationResult> {
     try {
-      console.log('Sending request to AI API for tag notes...');
-      console.log('Model:', this.model);
-      console.log('Base URL:', this.openai.baseURL);
+      this.debugLog('Sending request to AI API for tag notes...');
+      this.debugLog('Model:', this.model);
+      this.debugLog('Base URL:', this.openai.baseURL);
 
       const response = await this.openai.chat.completions.create({
         model: this.model,
@@ -161,7 +170,7 @@ export class AIService {
       const finalNotes = message || reasoningMessage;
 
       if (!finalNotes) {
-        console.log('No notes found in response');
+        this.debugLog('No notes found in response');
         return {
           success: false,
           error: 'No tag notes generated'

@@ -161,7 +161,8 @@ describe('ConfigService', () => {
         baseURL: 'https://file.example',
         model: 'file-model',
         language: 'en',
-        autoPush: true
+        autoPush: true,
+        mode: 'openai'
       });
 
       const config = ConfigService.getConfig();
@@ -170,10 +171,47 @@ describe('ConfigService', () => {
         apiKey: 'file-key',
         baseURL: 'https://file.example',
         model: 'file-model',
-        mode: 'custom',
+        mode: 'openai',
         language: 'en',
         autoPush: true
       });
+    });
+
+    it('persists mode and model updates from config file', async () => {
+      await ConfigService.updateConfig({
+        apiKey: 'file-key',
+        baseURL: 'https://file.example',
+        model: 'gpt-4o-mini',
+        mode: 'openai'
+      });
+
+      const config = ConfigService.getConfig();
+
+      expect(config.model).toBe('gpt-4o-mini');
+      expect(config.mode).toBe('openai');
+    });
+
+    it('normalizes invalid mode values to the default', async () => {
+      const filePath = process.env.GIT_AI_COMMIT_CONFIG_PATH!;
+      fs.writeFileSync(filePath, JSON.stringify({ mode: 'invalid-mode' }));
+
+      const config = ConfigService.getConfig();
+
+      expect(config.mode).toBe('custom');
+    });
+
+    it('removes stored mode when resetting to the default', async () => {
+      await ConfigService.updateConfig({ mode: 'openai' });
+
+      let raw = fs.readFileSync(process.env.GIT_AI_COMMIT_CONFIG_PATH!, 'utf-8');
+      let parsed = JSON.parse(raw);
+      expect(parsed.mode).toBe('openai');
+
+      await ConfigService.updateConfig({ mode: 'custom' });
+
+      raw = fs.readFileSync(process.env.GIT_AI_COMMIT_CONFIG_PATH!, 'utf-8');
+      parsed = JSON.parse(raw);
+      expect(parsed.mode).toBeUndefined();
     });
   });
 

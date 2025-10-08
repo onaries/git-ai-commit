@@ -50,7 +50,8 @@ export class CommitCommand {
         apiKey: mergedApiKey!,
         baseURL: mergedBaseURL,
         model: mergedModel,
-        language: existingConfig.language
+        language: existingConfig.language,
+        verbose: !messageOnly
       };
 
       log('Getting staged changes...');

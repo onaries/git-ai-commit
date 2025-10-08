@@ -24,6 +24,7 @@ interface StoredConfig {
 }
 
 const DEFAULT_MODEL = 'zai-org/GLM-4.5-FP8';
+const DEFAULT_MODE: 'custom' | 'openai' = 'custom';
 const DEFAULT_LANGUAGE: SupportedLanguage = 'ko';
 const DEFAULT_AUTO_PUSH = false;
 
@@ -67,8 +68,17 @@ export class ConfigService {
     return normalized === 'en' ? 'en' : 'ko';
   }
 
+  private static normalizeMode(mode?: string): 'custom' | 'openai' {
+    if (!mode) {
+      return DEFAULT_MODE;
+    }
+
+    const normalized = mode.toLowerCase();
+    return normalized === 'openai' ? 'openai' : 'custom';
+  }
+
   private static resolveEnvConfig(modeOverride?: 'custom' | 'openai'): EnvironmentConfig {
-    const resolvedMode = (modeOverride || process.env.AI_MODE || 'custom').toLowerCase() as 'custom' | 'openai';
+    const resolvedMode = this.normalizeMode(modeOverride || process.env.AI_MODE);
     const isOpenAI = resolvedMode === 'openai';
 
     const apiKey = isOpenAI
@@ -97,7 +107,7 @@ export class ConfigService {
     const fileConfig = this.loadFileConfig();
     const envConfig = this.resolveEnvConfig(fileConfig.mode);
 
-    const mode = (fileConfig.mode || envConfig.mode || 'custom') as 'custom' | 'openai';
+    const mode = this.normalizeMode(fileConfig.mode || envConfig.mode);
     const apiKey = fileConfig.apiKey ?? envConfig.apiKey;
     const baseURL = fileConfig.baseURL ?? envConfig.baseURL;
     const model = fileConfig.model ?? envConfig.model ?? DEFAULT_MODEL;
@@ -135,8 +145,16 @@ export class ConfigService {
       next.autoPush = Boolean(updates.autoPush);
     }
 
+    if (updates.mode !== undefined) {
+      next.mode = this.normalizeMode(updates.mode);
+    }
+
     if (next.model === DEFAULT_MODEL) {
       delete next.model;
+    }
+
+    if (next.mode === DEFAULT_MODE) {
+      delete next.mode;
     }
 
     const sanitized = Object.entries(next).reduce<StoredConfig>((acc, [key, value]) => {

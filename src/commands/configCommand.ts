@@ -100,6 +100,8 @@ export class ConfigCommand {
       console.log('  git-ai-commit config --auto-push            # Push after commits created with --commit');
       console.log('  git-ai-commit config -k sk-xxx              # Persist API key securely on disk');
       console.log('  git-ai-commit config -b https://api.test    # Persist custom API base URL');
+      console.log('  git-ai-commit config --mode openai          # Use OpenAI-compatible environment defaults');
+      console.log('  git-ai-commit config --model gpt-4o-mini    # Persist preferred AI model');
       return;
     }
 
