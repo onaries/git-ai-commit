@@ -28,21 +28,45 @@ npm install git-ai-commit
 After linking globally (`npm link`) or installing via npm, run:
 
 ```bash
-# generate a commit message from staged changes
+# generate a commit message from staged changes and confirm before committing
 git-ai-commit commit
 
-# generate and automatically create the commit
-git-ai-commit commit --commit
+# print only the generated message without touching git
+git-ai-commit commit --message-only
 
-# override API settings
+# override API settings for a single run
 git-ai-commit commit --api-key <key> --base-url <url> --model <model>
+
+# create and push the commit in one flow (will prompt for confirmation first)
+git-ai-commit commit --push
 ```
+
+The command previews the AI-generated message, then asks `Proceed with git commit? (y/n)` before creating the commit. Use `--push` to push after a successful commit, or set auto push through the config command (see below).
 
 During development you can run the CLI without building by using the dev script:
 
 ```bash
 npm run dev -- commit
 ```
+
+## Configuration
+
+Persist defaults without exporting environment variables through the interactive config command:
+
+```bash
+git-ai-commit config --show              # display merged configuration
+git-ai-commit config --language en       # set default AI output language
+git-ai-commit config --auto-push         # push automatically after confirmed commits
+git-ai-commit config --no-auto-push      # disable automatic pushing
+git-ai-commit config -k sk-...           # store API key securely on disk
+git-ai-commit config -b https://api.test # set a custom API base URL
+git-ai-commit config --model gpt-4o-mini # set preferred model
+git-ai-commit config --mode openai       # prefer OPENAI_* environment variables
+```
+
+The stored configuration works alongside environment variables—CLI flags override config values, which in turn override `.env` settings.
+
+Configuration is written to `~/.git-ai-commit/config.json` by default. Set `GIT_AI_COMMIT_CONFIG_PATH=/custom/path.json` to use a different location.
 
 ## Environment Variables
 
