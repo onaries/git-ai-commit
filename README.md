@@ -27,6 +27,8 @@ npm install git-ai-commit
 
 After linking globally (`npm link`) or installing via npm, run:
 
+### Commit Messages
+
 ```bash
 # generate a commit message from staged changes and confirm before committing
 git-ai-commit commit
@@ -48,6 +50,18 @@ During development you can run the CLI without building by using the dev script:
 ```bash
 npm run dev -- commit
 ```
+
+### Pull Request Messages
+
+```bash
+# create a PR title and body by diffing two branches
+git-ai-commit pr --base main --compare feature/add-cache
+
+# override API settings for the PR run only
+git-ai-commit pr --base release --compare hotfix/urgent --api-key <key>
+```
+
+The PR command compares the Git diff from the base branch to the compare branch and prints a ready-to-paste pull request title with `## Summary` and `## Testing` sections in your configured language.
 
 ## Configuration
 

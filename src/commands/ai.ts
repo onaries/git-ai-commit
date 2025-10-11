@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { generateCommitPrompt } from '../prompts/commit';
 import { generateTagPrompt } from '../prompts/tag';
+import { generatePullRequestPrompt } from '../prompts/pr';
 import { SupportedLanguage } from './config';
 
 export interface AIServiceConfig {
@@ -20,6 +21,12 @@ export interface CommitGenerationResult {
 export interface TagGenerationResult {
   success: boolean;
   notes?: string;
+  error?: string;
+}
+
+export interface PullRequestGenerationResult {
+  success: boolean;
+  message?: string;
   error?: string;
 }
 
@@ -186,6 +193,65 @@ export class AIService {
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Failed to generate tag notes'
+      };
+    }
+  }
+
+  async generatePullRequestMessage(
+    baseBranch: string,
+    compareBranch: string,
+    diff: string
+  ): Promise<PullRequestGenerationResult> {
+    try {
+      this.debugLog('Sending request to AI API for pull request message...');
+      this.debugLog('Model:', this.model);
+      this.debugLog('Base URL:', this.openai.baseURL);
+
+      const response = await this.openai.chat.completions.create({
+        model: this.model,
+        messages: [
+          {
+            role: 'system',
+            content: generatePullRequestPrompt(
+              baseBranch,
+              compareBranch,
+              '',
+              this.language
+            )
+          },
+          {
+            role: 'user',
+            content: `Git diff between ${baseBranch} and ${compareBranch}:\n${diff}`
+          }
+        ],
+        max_tokens: 4000,
+        temperature: 0.2
+      });
+
+      const choice = response.choices[0];
+      const message = choice?.message?.content?.trim();
+
+      const messageAny = choice?.message as any;
+      const reasoningMessage = messageAny?.reasoning_content?.trim();
+
+      const finalMessage = message || reasoningMessage;
+
+      if (!finalMessage) {
+        return {
+          success: false,
+          error: 'No pull request message generated'
+        };
+      }
+
+      return {
+        success: true,
+        message: finalMessage.trim()
+      };
+    } catch (error) {
+      console.error('API Error:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Failed to generate pull request message'
       };
     }
   }

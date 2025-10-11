@@ -45,6 +45,33 @@ export class GitService {
       };
     }
   }
+
+  static async getBranchDiff(base: string, compare: string): Promise<GitDiffResult> {
+    try {
+      const command = `git diff ${base}...${compare}`;
+      const { stdout } = await execAsync(command);
+
+      if (!stdout.trim()) {
+        return {
+          success: false,
+          error: `No differences found between ${base} and ${compare}.`
+        };
+      }
+
+      return {
+        success: true,
+        diff: stdout
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get branch diff';
+      return {
+        success: false,
+        error: message.includes('unknown revision')
+          ? `Unable to resolve one of the branches: ${base} or ${compare}.`
+          : message
+      };
+    }
+  }
   
   static async createCommit(message: string): Promise<boolean> {
     try {
