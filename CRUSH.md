@@ -8,7 +8,6 @@
 - `npm link` - Install globally for CLI usage
 
 # Environment Variables
-- `CHUTES_API_TOKEN` - Chutes API token (highest priority)
 - `OPENAI_API_KEY` or `AI_API_KEY` - API key for AI service
 - `OPENAI_BASE_URL` or `AI_BASE_URL` - Custom API base URL (optional)
 - `OPENAI_MODEL` or `AI_MODEL` - Model to use (optional, default: zai-org/GLM-4.5-FP8)

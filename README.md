@@ -114,8 +114,8 @@ Configuration is written to `~/.git-ai-commit/config.json` by default. Set `GIT_
 
 Set the following variables (e.g., in a local `.env` file) before using the CLI:
 
-- `AI_MODE` controls which provider defaults to: `openai` prioritises `OPENAI_*` vars; any other value (or unset) uses the `AI_*` vars first before falling back to OpenAI then Chutes.
-- Credentials: `AI_API_KEY`, `OPENAI_API_KEY`, or `CHUTES_API_TOKEN` (checked in that order when `AI_MODE` is not `openai`).
+- `AI_MODE` controls which provider defaults to: `openai` prioritises `OPENAI_*` vars; any other value (or unset) uses the `AI_*` vars first and falls back to `OPENAI_*`.
+- Credentials: `AI_API_KEY` or `OPENAI_API_KEY`.
 - Base URLs: `AI_BASE_URL` or `OPENAI_BASE_URL` (priority matches the selected mode).
 - Models: `AI_MODEL` or `OPENAI_MODEL` (priority matches the selected mode).
 

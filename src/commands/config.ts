@@ -82,8 +82,8 @@ export class ConfigService {
     const isOpenAI = resolvedMode === 'openai';
 
     const apiKey = isOpenAI
-      ? process.env.OPENAI_API_KEY || process.env.AI_API_KEY || process.env.CHUTES_API_TOKEN
-      : process.env.AI_API_KEY || process.env.OPENAI_API_KEY || process.env.CHUTES_API_TOKEN;
+      ? process.env.OPENAI_API_KEY || process.env.AI_API_KEY
+      : process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
 
     const baseURL = isOpenAI
       ? process.env.OPENAI_BASE_URL || process.env.AI_BASE_URL

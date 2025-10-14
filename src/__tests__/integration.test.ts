@@ -8,7 +8,6 @@ import { GitService } from '../commands/git';
 import { ConfigService } from '../commands/config';
 
 const hasApiKey = Boolean(
-  process.env.CHUTES_API_TOKEN ||
   process.env.OPENAI_API_KEY ||
   process.env.AI_API_KEY
 );

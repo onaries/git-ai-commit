@@ -31,22 +31,6 @@ describe('ConfigService', () => {
   });
 
   describe('getConfig', () => {
-    it('returns environment configuration using CHUTES_API_TOKEN', () => {
-      process.env.CHUTES_API_TOKEN = 'chutes-api-key';
-      process.env.OPENAI_BASE_URL = 'https://api.test.com';
-      process.env.OPENAI_MODEL = 'gpt-4';
-
-      const config = ConfigService.getConfig();
-
-      expect(config).toEqual({
-        apiKey: 'chutes-api-key',
-        baseURL: 'https://api.test.com',
-        model: 'gpt-4',
-        mode: 'custom',
-        language: 'ko',
-        autoPush: false
-      });
-    });
 
     it('uses OPENAI_API_KEY values when present', () => {
       process.env.OPENAI_API_KEY = 'test-api-key';
@@ -85,7 +69,6 @@ describe('ConfigService', () => {
     it('prefers AI_* variables over others in custom mode', () => {
       process.env.AI_API_KEY = 'ai-key';
       process.env.OPENAI_API_KEY = 'openai-key';
-      process.env.CHUTES_API_TOKEN = 'chutes-key';
       process.env.AI_BASE_URL = 'ai-url';
       process.env.OPENAI_BASE_URL = 'openai-url';
 
@@ -246,7 +229,6 @@ describe('ConfigService', () => {
     it('throws when merged configuration lacks API key', () => {
       delete process.env.OPENAI_API_KEY;
       delete process.env.AI_API_KEY;
-      delete process.env.CHUTES_API_TOKEN;
 
       const config = ConfigService.getConfig();
 
