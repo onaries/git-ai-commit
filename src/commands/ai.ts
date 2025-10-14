@@ -52,11 +52,15 @@ export class AIService {
     }
   }
 
-  async generateCommitMessage(diff: string): Promise<CommitGenerationResult> {
+  async generateCommitMessage(diff: string, extraInstructions?: string): Promise<CommitGenerationResult> {
     try {
       this.debugLog('Sending request to AI API...');
       this.debugLog('Model:', this.model);
       this.debugLog('Base URL:', this.openai.baseURL);
+      
+      const customInstructions = extraInstructions && extraInstructions.trim().length > 0
+        ? `Git diff will be provided separately in the user message.\n\n## Additional User Instructions\n${extraInstructions.trim()}`
+        : 'Git diff will be provided separately in the user message.';
       
       const response = await this.openai.chat.completions.create({
         model: this.model,
@@ -65,7 +69,7 @@ export class AIService {
             role: 'system',
             content: generateCommitPrompt(
               '',
-              'Git diff will be provided separately in the user message.',
+              customInstructions,
               this.language
             )
           },
@@ -146,18 +150,22 @@ export class AIService {
     }
   }
 
-  async generateTagNotes(tagName: string, commitLog: string): Promise<TagGenerationResult> {
+  async generateTagNotes(tagName: string, commitLog: string, extraInstructions?: string): Promise<TagGenerationResult> {
     try {
       this.debugLog('Sending request to AI API for tag notes...');
       this.debugLog('Model:', this.model);
       this.debugLog('Base URL:', this.openai.baseURL);
+
+      const customInstructions = extraInstructions && extraInstructions.trim().length > 0
+        ? `${extraInstructions.trim()}`
+        : '';
 
       const response = await this.openai.chat.completions.create({
         model: this.model,
         messages: [
           {
             role: 'system',
-            content: generateTagPrompt(tagName, '', this.language)
+            content: generateTagPrompt(tagName, customInstructions, this.language)
           },
           {
             role: 'user',

@@ -44,6 +44,12 @@ describe('TagCommand', () => {
 
     (ConfigService.validateConfig as jest.Mock).mockReturnValue(undefined);
 
+    // Confirm creation by default
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagCreate')
+      .mockResolvedValue(true);
+
+    // Do not push by default
     confirmSpy = jest
       .spyOn(TagCommand.prototype as any, 'confirmTagPush')
       .mockResolvedValue(false);
@@ -100,7 +106,7 @@ describe('TagCommand', () => {
       model: 'gpt-test',
       language: 'ko'
     });
-    expect(mockGenerateTagNotes).toHaveBeenCalledWith('v1.3.0', '- feat: add feature\n- fix: bug fix');
+    expect(mockGenerateTagNotes).toHaveBeenCalledWith('v1.3.0', '- feat: add feature\n- fix: bug fix', undefined);
     expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.3.0', '- Added feature\n- Fixed bug');
     expect(GitService.pushTag).not.toHaveBeenCalled();
   });

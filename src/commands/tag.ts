@@ -10,6 +10,7 @@ export interface TagOptions {
   model?: string;
   message?: string;
   baseTag?: string;
+  prompt?: string;
 }
 
 export class TagCommand {
@@ -24,6 +25,7 @@ export class TagCommand {
       .option('-m, --model <model>', 'Model to use (overrides env var)')
       .option('--message <message>', 'Tag message to use directly (skips AI generation)')
       .option('-t, --base-tag <tag>', 'Existing tag to diff against when generating notes')
+      .option('--prompt <text>', 'Additional instructions to append to the AI prompt for this tag')
       .action(async (tagName: string, options: TagOptions) => {
         await this.handleTag(tagName, options);
       });
@@ -92,7 +94,7 @@ export class TagCommand {
       }
 
       const aiService = new AIService(aiConfig);
-      const aiResult = await aiService.generateTagNotes(trimmedName, historyResult.log);
+      const aiResult = await aiService.generateTagNotes(trimmedName, historyResult.log, options.prompt);
 
       if (!aiResult.success || !aiResult.notes) {
         console.error('Error:', aiResult.error ?? 'Failed to generate tag notes.');
@@ -101,6 +103,17 @@ export class TagCommand {
       }
 
       tagMessage = aiResult.notes;
+    }
+
+    // Show preview and confirm before creating the tag
+    console.log('\nTag message preview:\n');
+    console.log(tagMessage);
+
+    const shouldCreate = await this.confirmTagCreate(trimmedName);
+
+    if (!shouldCreate) {
+      console.log('Tag creation cancelled by user.');
+      return;
     }
 
     console.log(`Creating annotated tag ${trimmedName}...`);
@@ -113,8 +126,6 @@ export class TagCommand {
     }
 
     console.log(`✅ Tag ${trimmedName} created successfully!`);
-    console.log('\nTag message:\n');
-    console.log(tagMessage);
 
     const shouldPush = await this.confirmTagPush(trimmedName);
 
@@ -139,6 +150,22 @@ export class TagCommand {
 
     const answer: string = await new Promise(resolve => {
       rl.question(`Push tag ${tagName} to remote? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
+  private async confirmTagCreate(tagName: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Create annotated tag ${tagName}? (y/n): `, resolve);
     });
 
     rl.close();

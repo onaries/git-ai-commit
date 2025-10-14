@@ -10,6 +10,7 @@ export interface CommitOptions {
   model?: string;
   push?: boolean;
   messageOnly?: boolean;
+  prompt?: string;
 }
 
 export class CommitCommand {
@@ -23,6 +24,7 @@ export class CommitCommand {
       .option('--model <model>', 'Model to use (overrides env var)')
       .option('-m, --message-only', 'Output only the generated commit message and skip git actions')
       .option('-p, --push', 'Push current branch after creating the commit (implies --commit)')
+      .option('--prompt <text>', 'Additional instructions to append to the AI prompt for this commit')
       .action(this.handleCommit.bind(this));
   }
 
@@ -66,7 +68,7 @@ export class CommitCommand {
       log('Generating commit message...');
       
       const aiService = new AIService(aiConfig);
-      const aiResult = await aiService.generateCommitMessage(diffResult.diff!);
+      const aiResult = await aiService.generateCommitMessage(diffResult.diff!, options.prompt);
 
       if (!aiResult.success) {
         console.error('Error:', aiResult.error);
