@@ -3,6 +3,7 @@ import readline from 'readline';
 import { AIService, AIServiceConfig } from './ai';
 import { ConfigService } from './config';
 import { GitService } from './git';
+import { LogService } from './log';
 
 export interface TagOptions {
   apiKey?: string;
@@ -56,6 +57,12 @@ export class TagCommand {
 
     if (!trimmedName) {
       console.error('Tag name is required.');
+      await LogService.append({
+        command: 'tag',
+        args: { name: tagName, ...options, apiKey: options.apiKey ? '***' : undefined },
+        status: 'failure',
+        details: 'missing tag name'
+      });
       process.exit(1);
       return;
     }
@@ -79,6 +86,12 @@ export class TagCommand {
       const historyResult = await GitService.getCommitSummariesSince(baseTag);
       if (!historyResult.success || !historyResult.log) {
         console.error('Error:', historyResult.error ?? 'Unable to read commit history.');
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: historyResult.error ?? 'Unable to read commit history.'
+        });
         process.exit(1);
         return;
       }
@@ -88,7 +101,14 @@ export class TagCommand {
       try {
         aiConfig = this.resolveAIConfig(options);
       } catch (error) {
-        console.error('Error:', error instanceof Error ? error.message : error);
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('Error:', message);
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: message
+        });
         process.exit(1);
         return;
       }
@@ -98,6 +118,12 @@ export class TagCommand {
 
       if (!aiResult.success || !aiResult.notes) {
         console.error('Error:', aiResult.error ?? 'Failed to generate tag notes.');
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: aiResult.error ?? 'Failed to generate tag notes.'
+        });
         process.exit(1);
         return;
       }
@@ -113,6 +139,12 @@ export class TagCommand {
 
     if (!shouldCreate) {
       console.log('Tag creation cancelled by user.');
+      await LogService.append({
+        command: 'tag',
+        args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+        status: 'cancelled',
+        details: 'user declined tag creation'
+      });
       return;
     }
 
@@ -121,6 +153,12 @@ export class TagCommand {
 
     if (!created) {
       console.error('❌ Failed to create tag');
+      await LogService.append({
+        command: 'tag',
+        args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+        status: 'failure',
+        details: 'git tag creation failed'
+      });
       process.exit(1);
       return;
     }
@@ -137,9 +175,21 @@ export class TagCommand {
         console.log(`✅ Tag ${trimmedName} pushed successfully!`);
       } else {
         console.error('❌ Failed to push tag to remote');
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: 'tag push failed'
+        });
         process.exit(1);
       }
     }
+
+    await LogService.append({
+      command: 'tag',
+      args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+      status: 'success'
+    });
   }
 
   private async confirmTagPush(tagName: string): Promise<boolean> {

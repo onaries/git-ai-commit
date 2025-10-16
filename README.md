@@ -20,7 +20,11 @@ npm link
 If the package is published to npm, it can be installed directly in another project:
 
 ```bash
-npm install git-ai-commit
+# local install
+npm install @ksw8954/git-ai-commit
+
+# or install globally to use the CLI everywhere
+npm install -g @ksw8954/git-ai-commit
 ```
 
 ## Usage
@@ -126,4 +130,20 @@ npm run lint         # run ESLint with the repository rules
 npm run test         # execute the Jest suite
 npm run test:watch   # watch mode for tests
 npm run typecheck    # TypeScript type checking without emit
+```
+
+### History
+
+```bash
+# show all history (most recent last)
+git-ai-commit history
+
+# show last N entries
+git-ai-commit history --limit 20
+
+# output as JSON
+git-ai-commit history --json --limit 10
+
+# clear all history (asks for confirmation)
+git-ai-commit history --clear
 ```

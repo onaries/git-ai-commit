@@ -1,5 +1,5 @@
 {
-  "name": "git-ai-commit",
+  "name": "@ksw8954/git-ai-commit",
   "version": "1.0.0",
   "description": "AI-powered git commit message generator",
   "main": "dist/index.js",
@@ -23,6 +23,9 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
+  "publishConfig": {
+    "access": "public"
+  },
   "bugs": {
     "url": "https://github.com/onaries/git-ai-commit/issues"
   },

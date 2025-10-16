@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { GitService } from './git';
 import { AIService } from './ai';
 import { ConfigService } from './config';
+import { LogService } from './log';
 
 export interface PullRequestOptions {
   base: string;
@@ -43,7 +44,14 @@ export class PullRequestCommand {
       const diffResult = await GitService.getBranchDiff(options.base, options.compare);
 
       if (!diffResult.success || !diffResult.diff) {
-        console.error('Error:', diffResult.error || 'Unable to determine differences between branches.');
+        const err = diffResult.error || 'Unable to determine differences between branches.';
+        console.error('Error:', err);
+        await LogService.append({
+          command: 'pr',
+          args: { ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: err
+        });
         process.exit(1);
         return;
       }
@@ -63,14 +71,33 @@ export class PullRequestCommand {
       );
 
       if (!aiResult.success || !aiResult.message) {
-        console.error('Error:', aiResult.error || 'Failed to generate pull request message.');
+        const err = aiResult.error || 'Failed to generate pull request message.';
+        console.error('Error:', err);
+        await LogService.append({
+          command: 'pr',
+          args: { ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: err
+        });
         process.exit(1);
         return;
       }
 
       console.log(aiResult.message);
+      await LogService.append({
+        command: 'pr',
+        args: { ...options, apiKey: options.apiKey ? '***' : undefined },
+        status: 'success'
+      });
     } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error:', message);
+      await LogService.append({
+        command: 'pr',
+        args: { ...options, apiKey: options.apiKey ? '***' : undefined },
+        status: 'failure',
+        details: message
+      });
       process.exit(1);
     }
   }

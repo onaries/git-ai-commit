@@ -5,6 +5,7 @@ import { CommitCommand } from './commands/commit';
 import { ConfigCommand } from './commands/configCommand';
 import { PullRequestCommand } from './commands/prCommand';
 import { TagCommand } from './commands/tag';
+import { HistoryCommand } from './commands/history';
 
 const program = new Command();
 
@@ -17,10 +18,12 @@ const commitCommand = new CommitCommand();
 const configCommand = new ConfigCommand();
 const pullRequestCommand = new PullRequestCommand();
 const tagCommand = new TagCommand();
+const historyCommand = new HistoryCommand();
 
 program.addCommand(commitCommand.getCommand());
 program.addCommand(configCommand.getCommand());
 program.addCommand(pullRequestCommand.getCommand());
 program.addCommand(tagCommand.getCommand());
+program.addCommand(historyCommand.getCommand());
 
 program.parse();

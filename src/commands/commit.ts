@@ -3,6 +3,7 @@ import readline from 'readline';
 import { GitService, GitDiffResult } from './git';
 import { AIService, AIServiceConfig } from './ai';
 import { ConfigService } from './config';
+import { LogService } from './log';
 
 export interface CommitOptions {
   apiKey?: string;
@@ -29,6 +30,11 @@ export class CommitCommand {
   }
 
   private async handleCommit(options: CommitOptions) {
+    const start = Date.now();
+    const safeArgs = {
+      ...options,
+      apiKey: options.apiKey ? '***' : undefined
+    } as Record<string, unknown>;
     try {
       const existingConfig = ConfigService.getConfig();
 
@@ -62,6 +68,13 @@ export class CommitCommand {
       
       if (!diffResult.success) {
         console.error('Error:', diffResult.error);
+        await LogService.append({
+          command: 'commit',
+          args: safeArgs,
+          status: 'failure',
+          details: diffResult.error,
+          durationMs: Date.now() - start
+        });
         process.exit(1);
       }
 
@@ -72,6 +85,13 @@ export class CommitCommand {
 
       if (!aiResult.success) {
         console.error('Error:', aiResult.error);
+        await LogService.append({
+          command: 'commit',
+          args: safeArgs,
+          status: 'failure',
+          details: aiResult.error,
+          durationMs: Date.now() - start
+        });
         process.exit(1);
       }
 
@@ -82,6 +102,13 @@ export class CommitCommand {
 
       if (messageOnly) {
         console.log(aiResult.message);
+        await LogService.append({
+          command: 'commit',
+          args: { ...safeArgs, messageOnly: true },
+          status: 'success',
+          details: 'message-only output',
+          durationMs: Date.now() - start
+        });
         return;
       }
 
@@ -92,6 +119,13 @@ export class CommitCommand {
 
       if (!confirmed) {
         console.log('Commit cancelled by user.');
+        await LogService.append({
+          command: 'commit',
+          args: safeArgs,
+          status: 'cancelled',
+          details: 'user declined commit',
+          durationMs: Date.now() - start
+        });
         return;
       }
 
@@ -118,15 +152,43 @@ export class CommitCommand {
             console.log('✅ Push completed successfully!');
           } else {
             console.error('❌ Failed to push to remote');
+            await LogService.append({
+              command: 'commit',
+              args: { ...safeArgs, push: true },
+              status: 'failure',
+              details: 'push failed',
+              durationMs: Date.now() - start
+            });
             process.exit(1);
           }
         }
       } else {
         console.error('❌ Failed to create commit');
+        await LogService.append({
+          command: 'commit',
+          args: safeArgs,
+          status: 'failure',
+          details: 'git commit failed',
+          durationMs: Date.now() - start
+        });
         process.exit(1);
       }
+      await LogService.append({
+        command: 'commit',
+        args: safeArgs,
+        status: 'success',
+        durationMs: Date.now() - start
+      });
     } catch (error) {
-      console.error('Error:', error instanceof Error ? error.message : error);
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('Error:', message);
+      await LogService.append({
+        command: 'commit',
+        args: safeArgs,
+        status: 'failure',
+        details: message,
+        durationMs: Date.now() - start
+      });
       process.exit(1);
     }
   }
