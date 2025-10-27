@@ -52,6 +52,33 @@ export class AIService {
     }
   }
 
+  /**
+   * Remove think/thinking tags and other XML-style tags from AI response
+   */
+  private cleanMessage(message: string): string {
+    if (!message) return message;
+
+    let cleaned = message;
+
+    // Remove <think>...</think> (including namespaced <antml:think>) and <thinking>...</thinking>
+    const thinkBlock = /<\s*(?:antml:)?think\b[^>]*>[\s\S]*?<\s*\/\s*(?:antml:)?think\s*>/gi;
+    const thinkingBlock = /<\s*thinking\b[^>]*>[\s\S]*?<\s*\/\s*thinking\s*>/gi;
+    cleaned = cleaned.replace(thinkBlock, '').replace(thinkingBlock, '');
+
+    // Also remove stray opening/closing think tags if any slipped through
+    cleaned = cleaned.replace(/<\/?\s*(?:antml:)?think\b[^>]*>/gi, '');
+    cleaned = cleaned.replace(/<\/?\s*thinking\b[^>]*>/gi, '');
+
+    // Remove any remaining XML/HTML-like tags
+    cleaned = cleaned.replace(/<[^>]+>/g, '');
+
+    // Normalize whitespace
+    cleaned = cleaned.replace(/[\t\r]+/g, '');
+    cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
+
+    return cleaned;
+  }
+
   async generateCommitMessage(diff: string, extraInstructions?: string): Promise<CommitGenerationResult> {
     try {
       this.debugLog('Sending request to AI API...');
@@ -137,6 +164,61 @@ export class AIService {
         }
       }
 
+      // Clean and normalize formatting/artifacts that sometimes appear
+      finalMessage = this.cleanMessage(finalMessage);
+
+      // If the model produced a stray type-only line (e.g., "chore:" on its own), drop it
+      let lines = finalMessage.split('\n').map(l => l.replace(/[\s\t]+$/,'')).filter(l => l !== undefined) as string[];
+      const headerPattern = /^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?:\s+.+/;
+      const typeOnlyPattern = /^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?:\s*$/;
+
+      // Remove Markdown code fences and trim surrounding whitespace
+      lines = lines.filter(l => !/^```/.test(l));
+
+      // Trim leading blank lines
+      while (lines.length && lines[0].trim() === '') lines.shift();
+
+      // Remove any leading type-only lines until we hit a real header or content
+      while (lines.length && typeOnlyPattern.test(lines[0])) {
+        lines.shift();
+        while (lines.length && lines[0].trim() === '') lines.shift();
+      }
+
+      // If the first non-empty line is not a header, but a header exists later, start from that header
+      const firstHeaderIdx = lines.findIndex(l => headerPattern.test(l));
+      if (firstHeaderIdx > 0) {
+        lines = lines.slice(firstHeaderIdx);
+      }
+
+      // If the first line has a duplicated type prefix like "chore: docs(scope): ...", trim the outer prefix
+      if (lines.length > 0) {
+        const dupTypePrefix = /^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert):\s+(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?:\s+(.+)/;
+        const m = lines[0].match(dupTypePrefix);
+        if (m) {
+          // Keep the inner proper header
+          const innerType = m[2];
+          // Rebuild as `${innerType}${scope}: ${desc}`
+          lines[0] = `${innerType}${m[3] ?? ''}: ${m[4]}`;
+        }
+      }
+
+      // Ensure only a single blank line between header and body if body exists
+      if (lines.length > 1 && lines[0].trim().length > 0) {
+        // Collapse multiple blank lines immediately after header to one
+        let i = 1;
+        let blankCount = 0;
+        while (i < lines.length && lines[i].trim() === '') {
+          blankCount++;
+          i++;
+        }
+        if (blankCount > 1) {
+          // Keep exactly one blank line
+          lines.splice(1, blankCount - 1);
+        }
+      }
+
+      finalMessage = lines.join('\n').trim();
+
       return {
         success: true,
         message: finalMessage
@@ -194,7 +276,7 @@ export class AIService {
 
       return {
         success: true,
-        notes: finalNotes.trim()
+        notes: this.cleanMessage(finalNotes.trim())
       };
     } catch (error) {
       console.error('API Error:', error);
@@ -253,7 +335,7 @@ export class AIService {
 
       return {
         success: true,
-        message: finalMessage.trim()
+        message: this.cleanMessage(finalMessage.trim())
       };
     } catch (error) {
       console.error('API Error:', error);

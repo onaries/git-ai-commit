@@ -1,4 +1,4 @@
-.PHONY: install build dev lint test typecheck clean uninstall link unlink
+.PHONY: install build dev lint test typecheck clean uninstall link unlink version publish install-package
 
 install: ## Install dependencies and build the project
 	npm install
@@ -30,3 +30,15 @@ link: ## Link the CLI globally
 
 unlink: ## Unlink the globally installed CLI
 	npm unlink -g git-ai-commit
+
+# Version bump target
+# Usage: make version [LEVEL=patch]  (LEVEL can be patch, minor, major)
+LEVEL ?= patch
+version: ## Bump package.json version one step (default: patch)
+	npm version $(LEVEL) --no-git-tag-version
+
+publish: build ## Publish the package to npm (ensure you're logged in)
+	npm publish
+
+install-package: ## Install this package globally via npm
+	npm i -g @ksw8954/git-ai-commit

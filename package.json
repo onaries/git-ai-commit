@@ -1,6 +1,6 @@
 {
   "name": "@ksw8954/git-ai-commit",
-  "version": "1.0.1",
+  "version": "1.0.4",
   "description": "AI-powered git commit message generator",
   "main": "dist/index.js",
   "bin": {
