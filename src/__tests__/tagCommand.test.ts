@@ -8,7 +8,12 @@ jest.mock('../commands/git', () => ({
     getLatestTag: jest.fn(),
     getCommitSummariesSince: jest.fn(),
     createAnnotatedTag: jest.fn(),
-    pushTag: jest.fn()
+    pushTag: jest.fn(),
+    tagExists: jest.fn(),
+    remoteTagExists: jest.fn(),
+    deleteLocalTag: jest.fn(),
+    deleteRemoteTag: jest.fn(),
+    forcePushTag: jest.fn()
   }
 }));
 
@@ -43,6 +48,10 @@ describe('TagCommand', () => {
     });
 
     (ConfigService.validateConfig as jest.Mock).mockReturnValue(undefined);
+
+    // Tag doesn't exist by default
+    (GitService.tagExists as jest.Mock).mockResolvedValue(false);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValue(false);
 
     // Confirm creation by default
     jest
@@ -193,5 +202,177 @@ describe('TagCommand', () => {
     expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v3.0.0', 'Release notes');
     expect(GitService.pushTag).toHaveBeenCalledWith('v3.0.0');
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('should cancel when user declines to replace existing local tag', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(false);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.tagExists).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.createAnnotatedTag).not.toHaveBeenCalled();
+    expect(GitService.pushTag).not.toHaveBeenCalled();
+  });
+
+  it('should delete local tag and create new one when user confirms', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(false);
+    (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.tagExists).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.deleteLocalTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.0.0', 'Release notes');
+  });
+
+  it('should delete both local and remote tag when user confirms', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.deleteRemoteTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmRemoteTagDelete')
+      .mockResolvedValueOnce(true);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.remoteTagExists).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.deleteRemoteTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.deleteLocalTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.0.0', 'Release notes');
+  });
+
+  it('should exit when local tag deletion fails', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(false);
+    (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(false);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.deleteLocalTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.createAnnotatedTag).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('should exit when remote tag deletion fails', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.deleteRemoteTag as jest.Mock).mockResolvedValueOnce(false);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmRemoteTagDelete')
+      .mockResolvedValueOnce(true);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.deleteRemoteTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.deleteLocalTag).not.toHaveBeenCalled();
+    expect(GitService.createAnnotatedTag).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('should force push when tag was replaced and user confirms', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(false);
+    (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(true);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+    confirmSpy.mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmForcePush')
+      .mockResolvedValueOnce(true);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.deleteLocalTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.0.0', 'Release notes');
+    expect(GitService.forcePushTag).toHaveBeenCalledWith('v1.0.0');
+  });
+
+  it('should cancel push when user declines force push', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(false);
+    (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+    confirmSpy.mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmForcePush')
+      .mockResolvedValueOnce(false);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.0.0', 'Release notes');
+    expect(GitService.forcePushTag).not.toHaveBeenCalled();
+    expect(GitService.pushTag).not.toHaveBeenCalled();
+  });
+
+  it('should force push when remote tag exists and user confirms', async () => {
+    (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.deleteRemoteTag as jest.Mock).mockResolvedValueOnce(false); // User declined remote deletion
+    (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(true);
+
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
+      .mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmRemoteTagDelete')
+      .mockResolvedValueOnce(false); // Decline remote deletion
+    confirmSpy.mockResolvedValueOnce(true);
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmForcePush')
+      .mockResolvedValueOnce(true);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v1.0.0', { message: 'Release notes' });
+
+    expect(GitService.forcePushTag).toHaveBeenCalledWith('v1.0.0');
+    expect(GitService.pushTag).not.toHaveBeenCalled();
   });
 });

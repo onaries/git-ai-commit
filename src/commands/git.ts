@@ -171,4 +171,52 @@ export class GitService {
       return false;
     }
   }
+
+  static async tagExists(tagName: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['rev-parse', `refs/tags/${tagName}`]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  static async remoteTagExists(tagName: string): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync(`git ls-remote --tags origin refs/tags/${tagName}`);
+      return stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  static async deleteLocalTag(tagName: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['tag', '-d', tagName]);
+      return true;
+    } catch (error) {
+      console.error('Failed to delete local tag:', error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async deleteRemoteTag(tagName: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['push', 'origin', '--delete', tagName]);
+      return true;
+    } catch (error) {
+      console.error('Failed to delete remote tag:', error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async forcePushTag(tagName: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['push', 'origin', tagName, '--force']);
+      return true;
+    } catch (error) {
+      console.error('Failed to force push tag to remote:', error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
 }

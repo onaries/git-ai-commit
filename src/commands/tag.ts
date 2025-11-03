@@ -67,6 +67,70 @@ export class TagCommand {
       return;
     }
 
+    // Check if tag already exists locally
+    const localTagExists = await GitService.tagExists(trimmedName);
+    let remoteTagExists = false;
+    let wasTagReplaced = false;
+
+    if (localTagExists) {
+      console.log(`⚠️  Tag ${trimmedName} already exists locally.`);
+      const shouldDelete = await this.confirmTagDelete(trimmedName);
+
+      if (!shouldDelete) {
+        console.log('Tag creation cancelled by user.');
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'cancelled',
+          details: 'user declined to replace existing tag'
+        });
+        return;
+      }
+
+      // Check if tag exists on remote
+      remoteTagExists = await GitService.remoteTagExists(trimmedName);
+
+      if (remoteTagExists) {
+        console.log(`⚠️  Tag ${trimmedName} also exists on remote.`);
+        const shouldDeleteRemote = await this.confirmRemoteTagDelete(trimmedName);
+
+        if (shouldDeleteRemote) {
+          console.log(`Deleting remote tag ${trimmedName}...`);
+          const remoteDeleted = await GitService.deleteRemoteTag(trimmedName);
+          if (!remoteDeleted) {
+            console.error('❌ Failed to delete remote tag');
+            await LogService.append({
+              command: 'tag',
+              args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+              status: 'failure',
+              details: 'remote tag deletion failed'
+            });
+            process.exit(1);
+            return;
+          }
+          console.log(`✅ Remote tag ${trimmedName} deleted`);
+          remoteTagExists = false;
+        }
+      }
+
+      // Delete local tag
+      console.log(`Deleting local tag ${trimmedName}...`);
+      const localDeleted = await GitService.deleteLocalTag(trimmedName);
+      if (!localDeleted) {
+        console.error('❌ Failed to delete local tag');
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: 'local tag deletion failed'
+        });
+        process.exit(1);
+        return;
+      }
+      console.log(`✅ Local tag ${trimmedName} deleted`);
+      wasTagReplaced = true;
+    }
+
     let tagMessage = options.message?.trim();
 
     if (!tagMessage) {
@@ -168,20 +232,55 @@ export class TagCommand {
     const shouldPush = await this.confirmTagPush(trimmedName);
 
     if (shouldPush) {
-      console.log(`Pushing tag ${trimmedName} to remote...`);
-      const pushSuccess = await GitService.pushTag(trimmedName);
+      // If tag was replaced or remote tag still exists, use force push
+      const needsForcePush = wasTagReplaced || remoteTagExists;
 
-      if (pushSuccess) {
-        console.log(`✅ Tag ${trimmedName} pushed successfully!`);
+      if (needsForcePush) {
+        console.log(`⚠️  Tag ${trimmedName} exists on remote. Force push is required.`);
+        const shouldForcePush = await this.confirmForcePush(trimmedName);
+
+        if (!shouldForcePush) {
+          console.log('Tag push cancelled by user.');
+          await LogService.append({
+            command: 'tag',
+            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+            status: 'cancelled',
+            details: 'user declined force push'
+          });
+          return;
+        }
+
+        console.log(`Force pushing tag ${trimmedName} to remote...`);
+        const pushSuccess = await GitService.forcePushTag(trimmedName);
+
+        if (pushSuccess) {
+          console.log(`✅ Tag ${trimmedName} force pushed successfully!`);
+        } else {
+          console.error('❌ Failed to force push tag to remote');
+          await LogService.append({
+            command: 'tag',
+            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+            status: 'failure',
+            details: 'tag force push failed'
+          });
+          process.exit(1);
+        }
       } else {
-        console.error('❌ Failed to push tag to remote');
-        await LogService.append({
-          command: 'tag',
-          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
-          status: 'failure',
-          details: 'tag push failed'
-        });
-        process.exit(1);
+        console.log(`Pushing tag ${trimmedName} to remote...`);
+        const pushSuccess = await GitService.pushTag(trimmedName);
+
+        if (pushSuccess) {
+          console.log(`✅ Tag ${trimmedName} pushed successfully!`);
+        } else {
+          console.error('❌ Failed to push tag to remote');
+          await LogService.append({
+            command: 'tag',
+            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+            status: 'failure',
+            details: 'tag push failed'
+          });
+          process.exit(1);
+        }
       }
     }
 
@@ -216,6 +315,54 @@ export class TagCommand {
 
     const answer: string = await new Promise(resolve => {
       rl.question(`Create annotated tag ${tagName}? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
+  private async confirmTagDelete(tagName: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Delete existing tag ${tagName} and create a new one? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
+  private async confirmRemoteTagDelete(tagName: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Also delete remote tag ${tagName}? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
+  private async confirmForcePush(tagName: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Force push tag ${tagName} to remote? (y/n): `, resolve);
     });
 
     rl.close();

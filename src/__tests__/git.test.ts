@@ -7,11 +7,21 @@ jest.mock('../commands/git', () => {
     diff: 'mock diff'
   });
   const createCommit = jest.fn().mockResolvedValue(true);
+  const tagExists = jest.fn().mockResolvedValue(false);
+  const remoteTagExists = jest.fn().mockResolvedValue(false);
+  const deleteLocalTag = jest.fn().mockResolvedValue(true);
+  const deleteRemoteTag = jest.fn().mockResolvedValue(true);
+  const forcePushTag = jest.fn().mockResolvedValue(true);
 
   return {
     GitService: {
       getStagedDiff,
-      createCommit
+      createCommit,
+      tagExists,
+      remoteTagExists,
+      deleteLocalTag,
+      deleteRemoteTag,
+      forcePushTag
     }
   };
 });
@@ -81,6 +91,96 @@ describe('GitService', () => {
       (GitService.createCommit as jest.Mock).mockResolvedValueOnce(false);
 
       const result = await GitService.createCommit('feat: add new feature');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('tagExists', () => {
+    it('should return true when tag exists locally', async () => {
+      (GitService.tagExists as jest.Mock).mockResolvedValueOnce(true);
+
+      const result = await GitService.tagExists('v1.0.0');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when tag does not exist locally', async () => {
+      (GitService.tagExists as jest.Mock).mockResolvedValueOnce(false);
+
+      const result = await GitService.tagExists('v1.0.0');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('remoteTagExists', () => {
+    it('should return true when tag exists on remote', async () => {
+      (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(true);
+
+      const result = await GitService.remoteTagExists('v1.0.0');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when tag does not exist on remote', async () => {
+      (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(false);
+
+      const result = await GitService.remoteTagExists('v1.0.0');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('deleteLocalTag', () => {
+    it('should return true when local tag is deleted successfully', async () => {
+      (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
+
+      const result = await GitService.deleteLocalTag('v1.0.0');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when local tag deletion fails', async () => {
+      (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(false);
+
+      const result = await GitService.deleteLocalTag('v1.0.0');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('deleteRemoteTag', () => {
+    it('should return true when remote tag is deleted successfully', async () => {
+      (GitService.deleteRemoteTag as jest.Mock).mockResolvedValueOnce(true);
+
+      const result = await GitService.deleteRemoteTag('v1.0.0');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when remote tag deletion fails', async () => {
+      (GitService.deleteRemoteTag as jest.Mock).mockResolvedValueOnce(false);
+
+      const result = await GitService.deleteRemoteTag('v1.0.0');
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe('forcePushTag', () => {
+    it('should return true when force push is successful', async () => {
+      (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(true);
+
+      const result = await GitService.forcePushTag('v1.0.0');
+
+      expect(result).toBe(true);
+    });
+
+    it('should return false when force push fails', async () => {
+      (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(false);
+
+      const result = await GitService.forcePushTag('v1.0.0');
 
       expect(result).toBe(false);
     });
