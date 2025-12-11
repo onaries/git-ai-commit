@@ -15,7 +15,7 @@ export interface CommitOptions {
   push?: boolean;
   messageOnly?: boolean;
   prompt?: string;
-  noVerify?: boolean;
+  verify?: boolean;
 }
 
 export class CommitCommand {
@@ -135,7 +135,7 @@ export class CommitCommand {
       apiKey: options.apiKey ? "***" : undefined,
     } as Record<string, unknown>;
     try {
-      if (!options.noVerify) {
+      if (options.verify !== false) {
         await this.runPreCommitHook();
       }
 

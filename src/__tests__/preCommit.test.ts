@@ -130,7 +130,7 @@ describe('Pre-commit Hook Tests', () => {
   });
 
   it('should run both hooks if both exist', async () => {
-    mockFsExists.mockReturnValue(true); 
+    mockFsExists.mockReturnValue(true);
     mockFsRead.mockReturnValue(JSON.stringify({
       scripts: { 'pre-commit': 'test' }
     }));
@@ -142,5 +142,41 @@ describe('Pre-commit Hook Tests', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(mockSpawn).toHaveBeenCalledWith('npm', ['run', 'pre-commit'], expect.anything());
     expect(mockSpawn).toHaveBeenCalledWith('pre-commit', ['run'], expect.anything());
+  });
+
+  it('should skip npm pre-commit script when --no-verify is used', async () => {
+    mockFsExists.mockImplementation((p: string) => p.endsWith('package.json'));
+    mockFsRead.mockReturnValue(JSON.stringify({
+      scripts: { 'pre-commit': 'echo test' }
+    }));
+
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({ verify: false });
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should skip pre-commit hooks when --no-verify is used', async () => {
+    mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
+
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({ verify: false });
+
+    expect(mockSpawn).not.toHaveBeenCalled();
+  });
+
+  it('should skip all hooks when --no-verify is used even if both exist', async () => {
+    mockFsExists.mockReturnValue(true);
+    mockFsRead.mockReturnValue(JSON.stringify({
+      scripts: { 'pre-commit': 'test' }
+    }));
+
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({ verify: false });
+
+    expect(mockSpawn).not.toHaveBeenCalled();
   });
 });
