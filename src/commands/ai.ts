@@ -72,6 +72,11 @@ export class AIService {
     // Remove any remaining XML/HTML-like tags
     cleaned = cleaned.replace(/<[^>]+>/g, '');
 
+    // Strip common Markdown emphasis so headers remain plain text
+    cleaned = cleaned.replace(/\*\*(.*?)\*\*/g, '$1');
+    cleaned = cleaned.replace(/__(.*?)__/g, '$1');
+    cleaned = cleaned.replace(/`([^`]+)`/g, '$1');
+
     // Normalize whitespace
     cleaned = cleaned.replace(/[\t\r]+/g, '');
     cleaned = cleaned.replace(/\n{3,}/g, '\n\n').trim();
@@ -214,6 +219,14 @@ export class AIService {
         if (blankCount > 1) {
           // Keep exactly one blank line
           lines.splice(1, blankCount - 1);
+        }
+      }
+
+      // Drop additional commit headers to enforce a single conventional commit
+      if (lines.length > 0) {
+        const nextHeaderIdx = lines.slice(1).findIndex(l => headerPattern.test(l));
+        if (nextHeaderIdx >= 0) {
+          lines = lines.slice(0, nextHeaderIdx + 1);
         }
       }
 

@@ -46,7 +46,9 @@ ${customInstructions}
 ## CRITICAL: Commit Message Output Rules
 - DO NOT include any memory bank status indicators like "[Memory Bank: Active]" or "[Memory Bank: Missing]"
 - DO NOT include any task-specific formatting or artifacts from other rules
+- DO NOT use any Markdown styling (no **bold**, __underline__, \`code\`, links, or emojis) in the commit header, body, or footer
 - ONLY Generate a clean conventional commit message as specified below
+- Output exactly ONE conventional commit message. Choose a single primary type; never return multiple headers or multiple type prefixes.
 
 ${gitContext}
 
@@ -92,7 +94,7 @@ ${footerGuidelines}
 
 ## Analysis Instructions
 When analyzing staged changes:
-1. Determine Primary Type based on the nature of changes
+1. Determine a single Primary Type based on the dominant nature of the changes (if multiple types apply, pick the most impactful one and stick to it)
 2. Identify Scope from modified directories or modules
 3. Craft Description focusing on the most significant change
 4. Determine if there are Breaking Changes

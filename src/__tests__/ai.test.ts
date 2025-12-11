@@ -104,6 +104,44 @@ describe('AIService', () => {
       });
     });
 
+    it('should strip markdown formatting from commit header', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: '**chore(track_object): 불필요한 줄바꿈 제거하여 가독성 개선**'
+          }
+        }]
+      };
+
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+
+      const result = await aiService.generateCommitMessage('diff --git a/file b/file');
+
+      expect(result).toEqual({
+        success: true,
+        message: 'chore(track_object): 불필요한 줄바꿈 제거하여 가독성 개선'
+      });
+    });
+
+    it('should keep only the first commit header when multiple are returned', async () => {
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: 'feat: add payment API\nchore: update dependencies'
+          }
+        }]
+      };
+
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+
+      const result = await aiService.generateCommitMessage('diff --git a/file b/file');
+
+      expect(result).toEqual({
+        success: true,
+        message: 'feat: add payment API'
+      });
+    });
+
     it('should use default model when not specified', () => {
       const aiServiceWithDefaults = new AIService({
         apiKey: 'test-api-key'
