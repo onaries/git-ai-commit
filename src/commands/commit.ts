@@ -15,6 +15,7 @@ export interface CommitOptions {
   push?: boolean;
   messageOnly?: boolean;
   prompt?: string;
+  noVerify?: boolean;
 }
 
 export class CommitCommand {
@@ -37,6 +38,10 @@ export class CommitCommand {
       .option(
         "--prompt <text>",
         "Additional instructions to append to the AI prompt for this commit"
+      )
+      .option(
+        "--no-verify",
+        "Skip pre-commit hooks"
       )
       .action(this.handleCommit.bind(this));
   }
@@ -130,7 +135,9 @@ export class CommitCommand {
       apiKey: options.apiKey ? "***" : undefined,
     } as Record<string, unknown>;
     try {
-      await this.runPreCommitHook();
+      if (!options.noVerify) {
+        await this.runPreCommitHook();
+      }
 
       const existingConfig = ConfigService.getConfig();
 
