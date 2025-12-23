@@ -3,6 +3,79 @@ import { promisify } from 'util';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
+const GIT_DIFF_MAX_BUFFER = 50 * 1024 * 1024;
+const MAX_DIFF_TOKENS = 50000;
+const APPROX_CHARS_PER_TOKEN = 4;
+const MAX_DIFF_CHARS = MAX_DIFF_TOKENS * APPROX_CHARS_PER_TOKEN;
+const MAX_FILE_LINES = 400;
+const MAX_NEW_FILE_LINES = 200;
+
+const splitDiffSections = (diff: string): string[] => {
+  const lines = diff.split('\n');
+  const sections: string[] = [];
+  let current: string[] = [];
+
+  for (const line of lines) {
+    if (line.startsWith('diff --git ')) {
+      if (current.length > 0) {
+        sections.push(current.join('\n'));
+      }
+      current = [line];
+      continue;
+    }
+    current.push(line);
+  }
+
+  if (current.length > 0) {
+    sections.push(current.join('\n'));
+  }
+
+  return sections.length > 0 ? sections : [diff];
+};
+
+const truncateSection = (section: string): string => {
+  const lines = section.split('\n');
+  const isNewFile = section.includes('new file mode') || section.includes('--- /dev/null');
+  const limit = isNewFile ? MAX_NEW_FILE_LINES : MAX_FILE_LINES;
+
+  if (lines.length <= limit) {
+    return section;
+  }
+
+  const omitted = lines.length - limit;
+  const truncated = lines.slice(0, limit);
+  truncated.push(`... (truncated ${omitted} lines)`);
+  return truncated.join('\n');
+};
+
+const truncateDiffByFile = (diff: string): string => {
+  const sections = splitDiffSections(diff);
+  return sections.map(truncateSection).join('\n');
+};
+
+const truncateDiffByTotal = (diff: string): string => {
+  const lines = diff.split('\n');
+  let total = 0;
+  const kept: string[] = [];
+
+  for (const line of lines) {
+    const addition = line.length + 1;
+    if (total + addition > MAX_DIFF_CHARS) {
+      break;
+    }
+    kept.push(line);
+    total += addition;
+  }
+
+  if (kept.length === lines.length) {
+    return diff;
+  }
+
+  kept.push(`... (truncated remaining diff to stay under ${MAX_DIFF_TOKENS} tokens)`);
+  return kept.join('\n');
+};
+
+const truncateDiff = (diff: string): string => truncateDiffByTotal(truncateDiffByFile(diff));
 
 export interface GitDiffResult {
   success: boolean;
@@ -25,9 +98,12 @@ export interface GitLogResult {
 export class GitService {
   static async getStagedDiff(): Promise<GitDiffResult> {
     try {
-      const { stdout } = await execAsync('git diff --staged');
+      const { stdout } = await execFileAsync('git', ['diff', '--staged'], {
+        maxBuffer: GIT_DIFF_MAX_BUFFER
+      });
+      const diff = truncateDiff(stdout);
       
-      if (!stdout.trim()) {
+      if (!diff.trim()) {
         return {
           success: false,
           error: 'No staged changes found. Please stage your changes first.'
@@ -36,22 +112,27 @@ export class GitService {
       
       return {
         success: true,
-        diff: stdout
+        diff
       };
     } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to get git diff';
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to get git diff'
+        error: message.includes('maxBuffer')
+          ? 'Staged diff is too large to process. Try committing in smaller batches.'
+          : message
       };
     }
   }
 
   static async getBranchDiff(base: string, compare: string): Promise<GitDiffResult> {
     try {
-      const command = `git diff ${base}...${compare}`;
-      const { stdout } = await execAsync(command);
+      const { stdout } = await execFileAsync('git', ['diff', `${base}...${compare}`], {
+        maxBuffer: GIT_DIFF_MAX_BUFFER
+      });
+      const diff = truncateDiff(stdout);
 
-      if (!stdout.trim()) {
+      if (!diff.trim()) {
         return {
           success: false,
           error: `No differences found between ${base} and ${compare}.`
@@ -60,15 +141,17 @@ export class GitService {
 
       return {
         success: true,
-        diff: stdout
+        diff
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get branch diff';
       return {
         success: false,
-        error: message.includes('unknown revision')
-          ? `Unable to resolve one of the branches: ${base} or ${compare}.`
-          : message
+        error: message.includes('maxBuffer')
+          ? 'Diff is too large to process. Try narrowing the compare range.'
+          : message.includes('unknown revision')
+            ? `Unable to resolve one of the branches: ${base} or ${compare}.`
+            : message
       };
     }
   }
