@@ -52,6 +52,117 @@ export class AIService {
     }
   }
 
+  private isUnsupportedTokenParamError(
+    error: unknown,
+    param: 'max_tokens' | 'max_completion_tokens'
+  ): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const errorObj = error as {
+      error?: { message?: string; param?: string; code?: string };
+      message?: string;
+      param?: string;
+      code?: string;
+    };
+
+    const message = errorObj.error?.message ?? errorObj.message;
+    const code = errorObj.error?.code ?? errorObj.code;
+    const errorParam = errorObj.error?.param ?? errorObj.param;
+
+    if (code === 'unsupported_parameter' && errorParam === param) {
+      return true;
+    }
+
+    if (typeof message === 'string') {
+      return message.includes('Unsupported parameter') && message.includes(param);
+    }
+
+    return false;
+  }
+
+  private isUnsupportedValueError(error: unknown, param: string): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const errorObj = error as {
+      error?: { message?: string; param?: string; code?: string };
+      message?: string;
+      param?: string;
+      code?: string;
+    };
+
+    const message = errorObj.error?.message ?? errorObj.message;
+    const code = errorObj.error?.code ?? errorObj.code;
+    const errorParam = errorObj.error?.param ?? errorObj.param;
+
+    if (code === 'unsupported_value' && errorParam === param) {
+      return true;
+    }
+
+    if (typeof message === 'string') {
+      return message.includes('Unsupported value') && message.includes(param);
+    }
+
+    return false;
+  }
+
+  private swapTokenParam(
+    request: OpenAI.ChatCompletionCreateParamsNonStreaming,
+    targetParam: 'max_tokens' | 'max_completion_tokens'
+  ): OpenAI.ChatCompletionCreateParamsNonStreaming {
+    const { max_tokens, max_completion_tokens, ...rest } = request;
+    const tokenValue = max_completion_tokens ?? max_tokens;
+
+    if (tokenValue === undefined || tokenValue === null) {
+      return { ...rest };
+    }
+
+    if (targetParam === 'max_tokens') {
+      return { ...rest, max_tokens: tokenValue };
+    }
+
+    return { ...rest, max_completion_tokens: tokenValue };
+  }
+
+  private removeTemperature(
+    request: OpenAI.ChatCompletionCreateParamsNonStreaming
+  ): OpenAI.ChatCompletionCreateParamsNonStreaming {
+    const { temperature, ...rest } = request;
+    return { ...rest };
+  }
+
+  private async createChatCompletion(
+    request: OpenAI.ChatCompletionCreateParamsNonStreaming,
+    attempt = 0
+  ): Promise<OpenAI.ChatCompletion> {
+    try {
+      return await this.openai.chat.completions.create(request);
+    } catch (error) {
+      if (attempt < 3 && this.isUnsupportedValueError(error, 'temperature')) {
+        const fallbackRequest = this.removeTemperature(request);
+        this.debugLog('Retrying without temperature due to unsupported value error.');
+        return await this.createChatCompletion(fallbackRequest, attempt + 1);
+      }
+
+      if (this.isUnsupportedTokenParamError(error, 'max_completion_tokens')) {
+        const fallbackRequest = this.swapTokenParam(request, 'max_tokens');
+        this.debugLog('Retrying with max_tokens due to unsupported max_completion_tokens error.');
+        return await this.createChatCompletion(fallbackRequest, attempt + 1);
+      }
+
+      if (this.isUnsupportedTokenParamError(error, 'max_tokens')) {
+        const fallbackRequest = this.swapTokenParam(request, 'max_completion_tokens');
+        this.debugLog('Retrying with max_completion_tokens due to unsupported max_tokens error.');
+        return await this.createChatCompletion(fallbackRequest, attempt + 1);
+      }
+
+      throw error;
+    }
+  }
+
   /**
    * Remove think/thinking tags and other XML-style tags from AI response
    */
@@ -94,7 +205,7 @@ export class AIService {
         ? `Git diff will be provided separately in the user message.\n\n## Additional User Instructions\n${extraInstructions.trim()}`
         : 'Git diff will be provided separately in the user message.';
       
-      const response = await this.openai.chat.completions.create({
+      const response = await this.createChatCompletion({
         model: this.model,
         messages: [
           {
@@ -110,8 +221,7 @@ export class AIService {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 3000,
-        temperature: 0.1
+        max_completion_tokens: 3000
       });
 
       this.debugLog('API Response received:', JSON.stringify(response, null, 2));
@@ -255,7 +365,7 @@ export class AIService {
         ? `${extraInstructions.trim()}`
         : '';
 
-      const response = await this.openai.chat.completions.create({
+      const response = await this.createChatCompletion({
         model: this.model,
         messages: [
           {
@@ -267,8 +377,7 @@ export class AIService {
             content: `Commit log:\n${commitLog}`
           }
         ],
-        max_tokens: 3000,
-        temperature: 0.2
+        max_completion_tokens: 3000
       });
 
       const choice = response.choices[0];
@@ -310,7 +419,7 @@ export class AIService {
       this.debugLog('Model:', this.model);
       this.debugLog('Base URL:', this.openai.baseURL);
 
-      const response = await this.openai.chat.completions.create({
+      const response = await this.createChatCompletion({
         model: this.model,
         messages: [
           {
@@ -327,8 +436,7 @@ export class AIService {
             content: `Git diff between ${baseBranch} and ${compareBranch}:\n${diff}`
           }
         ],
-        max_tokens: 4000,
-        temperature: 0.2
+        max_completion_tokens: 4000
       });
 
       const choice = response.choices[0];

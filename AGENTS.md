@@ -1,5 +1,8 @@
 # Repository Guidelines
 
+## Local Search Tooling
+- Use `rg` for local search; do not use `mgrep` in this repository.
+
 ## Project Structure & Module Organization
 - `src/index.ts` bootstraps the CLI and wires subcommands.
 - `src/commands/` houses command implementations; `src/prompts/` stores prompt templates.

@@ -66,8 +66,7 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 3000,
-        temperature: 0.1
+        max_completion_tokens: 3000
       });
     });
 
@@ -101,6 +100,82 @@ describe('AIService', () => {
       expect(result).toEqual({
         success: false,
         error: 'API call failed'
+      });
+    });
+
+    it('should retry with max_tokens when max_completion_tokens is unsupported', async () => {
+      const error = Object.assign(
+        new Error('Unsupported parameter: \'max_completion_tokens\' is not supported with this model. Use \'max_tokens\' instead.'),
+        {
+          error: {
+            message:
+              'Unsupported parameter: \'max_completion_tokens\' is not supported with this model. Use \'max_tokens\' instead.',
+            type: 'invalid_request_error',
+            param: 'max_completion_tokens',
+            code: 'unsupported_parameter'
+          },
+          code: 'unsupported_parameter',
+          param: 'max_completion_tokens',
+          type: 'invalid_request_error'
+        }
+      );
+
+      const mockResponse = {
+        choices: [{
+          message: {
+            content: 'feat: add retry fallback'
+          }
+        }]
+      };
+
+      (mockOpenai.chat.completions.create as jest.Mock)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce(mockResponse);
+
+      const diff = 'diff --git a/file.txt b/file.txt\nnew file mode 100644';
+      const result = await aiService.generateCommitMessage(diff);
+
+      expect(result).toEqual({
+        success: true,
+        message: 'feat: add retry fallback'
+      });
+
+      expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(1, {
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: generateCommitPrompt(
+              '',
+              'Git diff will be provided separately in the user message.',
+              'ko'
+            )
+          },
+          {
+            role: 'user',
+            content: `Git diff:\n${diff}`
+          }
+        ],
+        max_completion_tokens: 3000
+      });
+
+      expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(2, {
+        model: 'gpt-4',
+        messages: [
+          {
+            role: 'system',
+            content: generateCommitPrompt(
+              '',
+              'Git diff will be provided separately in the user message.',
+              'ko'
+            )
+          },
+          {
+            role: 'user',
+            content: `Git diff:\n${diff}`
+          }
+        ],
+        max_tokens: 3000
       });
     });
 
@@ -183,8 +258,7 @@ describe('AIService', () => {
             content: `Git diff between main and feature/cache:\n${diff}`
           }
         ],
-        max_tokens: 4000,
-        temperature: 0.2
+        max_completion_tokens: 4000
       });
     });
 
