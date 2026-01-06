@@ -8,6 +8,7 @@ import { ConfigCommand } from './commands/configCommand';
 import { PullRequestCommand } from './commands/prCommand';
 import { TagCommand } from './commands/tag';
 import { HistoryCommand } from './commands/history';
+import { CompletionCommand } from './commands/completion';
 
 function getPackageVersion(): string {
   try {
@@ -34,11 +35,13 @@ const configCommand = new ConfigCommand();
 const pullRequestCommand = new PullRequestCommand();
 const tagCommand = new TagCommand();
 const historyCommand = new HistoryCommand();
+const completionCommand = new CompletionCommand();
 
 program.addCommand(commitCommand.getCommand());
 program.addCommand(configCommand.getCommand());
 program.addCommand(pullRequestCommand.getCommand());
 program.addCommand(tagCommand.getCommand());
 program.addCommand(historyCommand.getCommand());
+program.addCommand(completionCommand.getCommand());
 
 program.parse();

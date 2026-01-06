@@ -229,57 +229,66 @@ export class TagCommand {
 
     console.log(`✅ Tag ${trimmedName} created successfully!`);
 
-    const shouldPush = await this.confirmTagPush(trimmedName);
+    // Get available remotes
+    const remotes = await GitService.getRemotes();
 
-    if (shouldPush) {
-      // If tag was replaced or remote tag still exists, use force push
-      const needsForcePush = wasTagReplaced || remoteTagExists;
+    if (remotes.length === 0) {
+      console.log('No remotes configured. Skipping push.');
+    } else {
+      const selectedRemotes = await this.selectRemotesForPush(trimmedName, remotes);
 
-      if (needsForcePush) {
-        console.log(`⚠️  Tag ${trimmedName} exists on remote. Force push is required.`);
-        const shouldForcePush = await this.confirmForcePush(trimmedName);
+      if (selectedRemotes && selectedRemotes.length > 0) {
+        // If tag was replaced or remote tag still exists, use force push
+        const needsForcePush = wasTagReplaced || remoteTagExists;
 
-        if (!shouldForcePush) {
-          console.log('Tag push cancelled by user.');
-          await LogService.append({
-            command: 'tag',
-            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
-            status: 'cancelled',
-            details: 'user declined force push'
-          });
-          return;
-        }
+        if (needsForcePush) {
+          console.log(`\n⚠️  Tag ${trimmedName} may exist on remote. Force push is required.`);
+          const shouldForcePush = await this.confirmForcePush(trimmedName);
 
-        console.log(`Force pushing tag ${trimmedName} to remote...`);
-        const pushSuccess = await GitService.forcePushTag(trimmedName);
+          if (!shouldForcePush) {
+            console.log('Tag push cancelled by user.');
+            await LogService.append({
+              command: 'tag',
+              args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+              status: 'cancelled',
+              details: 'user declined force push'
+            });
+            return;
+          }
 
-        if (pushSuccess) {
-          console.log(`✅ Tag ${trimmedName} force pushed successfully!`);
+          for (const remote of selectedRemotes) {
+            console.log(`Force pushing tag ${trimmedName} to ${remote}...`);
+            const pushSuccess = await GitService.forcePushTag(trimmedName, remote);
+
+            if (pushSuccess) {
+              console.log(`✅ Tag ${trimmedName} force pushed to ${remote} successfully!`);
+            } else {
+              console.error(`❌ Failed to force push tag to ${remote}`);
+              await LogService.append({
+                command: 'tag',
+                args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+                status: 'failure',
+                details: `tag force push to ${remote} failed`
+              });
+            }
+          }
         } else {
-          console.error('❌ Failed to force push tag to remote');
-          await LogService.append({
-            command: 'tag',
-            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
-            status: 'failure',
-            details: 'tag force push failed'
-          });
-          process.exit(1);
-        }
-      } else {
-        console.log(`Pushing tag ${trimmedName} to remote...`);
-        const pushSuccess = await GitService.pushTag(trimmedName);
+          for (const remote of selectedRemotes) {
+            console.log(`Pushing tag ${trimmedName} to ${remote}...`);
+            const pushSuccess = await GitService.pushTagToRemote(trimmedName, remote);
 
-        if (pushSuccess) {
-          console.log(`✅ Tag ${trimmedName} pushed successfully!`);
-        } else {
-          console.error('❌ Failed to push tag to remote');
-          await LogService.append({
-            command: 'tag',
-            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
-            status: 'failure',
-            details: 'tag push failed'
-          });
-          process.exit(1);
+            if (pushSuccess) {
+              console.log(`✅ Tag ${trimmedName} pushed to ${remote} successfully!`);
+            } else {
+              console.error(`❌ Failed to push tag to ${remote}`);
+              await LogService.append({
+                command: 'tag',
+                args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+                status: 'failure',
+                details: `tag push to ${remote} failed`
+              });
+            }
+          }
         }
       }
     }
@@ -291,20 +300,51 @@ export class TagCommand {
     });
   }
 
-  private async confirmTagPush(tagName: string): Promise<boolean> {
+  private async selectRemotesForPush(tagName: string, remotes: string[]): Promise<string[] | null> {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
     });
 
+    console.log('\nAvailable remotes:');
+    remotes.forEach((remote, index) => {
+      console.log(`  ${index + 1}. ${remote}`);
+    });
+    console.log(`  all. Push to all remotes`);
+    console.log(`  n. Skip push`);
+
     const answer: string = await new Promise(resolve => {
-      rl.question(`Push tag ${tagName} to remote? (y/n): `, resolve);
+      rl.question(`\nSelect remote(s) to push tag ${tagName} (e.g., 1 or 1,2 or all or n): `, resolve);
     });
 
     rl.close();
 
     const normalized = answer.trim().toLowerCase();
-    return normalized === 'y' || normalized === 'yes';
+
+    if (normalized === 'n' || normalized === 'no' || normalized === '') {
+      return null;
+    }
+
+    if (normalized === 'all') {
+      return remotes;
+    }
+
+    const selections = normalized.split(',').map(s => s.trim());
+    const selectedRemotes: string[] = [];
+
+    for (const sel of selections) {
+      const index = parseInt(sel, 10);
+      if (isNaN(index) || index < 1 || index > remotes.length) {
+        console.log(`Invalid selection: ${sel}`);
+        return null;
+      }
+      const remote = remotes[index - 1];
+      if (!selectedRemotes.includes(remote)) {
+        selectedRemotes.push(remote);
+      }
+    }
+
+    return selectedRemotes.length > 0 ? selectedRemotes : null;
   }
 
   private async confirmTagCreate(tagName: string): Promise<boolean> {

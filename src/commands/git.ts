@@ -293,12 +293,54 @@ export class GitService {
     }
   }
 
-  static async forcePushTag(tagName: string): Promise<boolean> {
+  static async forcePushTag(tagName: string, remote = 'origin'): Promise<boolean> {
     try {
-      await execFileAsync('git', ['push', 'origin', tagName, '--force']);
+      await execFileAsync('git', ['push', remote, tagName, '--force']);
       return true;
     } catch (error) {
-      console.error('Failed to force push tag to remote:', error instanceof Error ? error.message : error);
+      console.error(`Failed to force push tag to ${remote}:`, error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async getRemotes(): Promise<string[]> {
+    try {
+      const { stdout } = await execAsync('git remote');
+      const remotes = stdout
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+      return remotes;
+    } catch {
+      return [];
+    }
+  }
+
+  static async pushTagToRemote(tagName: string, remote: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['push', remote, tagName]);
+      return true;
+    } catch (error) {
+      console.error(`Failed to push tag to ${remote}:`, error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async deleteRemoteTagFrom(tagName: string, remote: string): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['push', remote, '--delete', tagName]);
+      return true;
+    } catch (error) {
+      console.error(`Failed to delete tag from ${remote}:`, error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async remoteTagExistsOn(tagName: string, remote: string): Promise<boolean> {
+    try {
+      const { stdout } = await execAsync(`git ls-remote --tags ${remote} refs/tags/${tagName}`);
+      return stdout.trim().length > 0;
+    } catch {
       return false;
     }
   }

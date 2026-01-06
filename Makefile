@@ -1,4 +1,4 @@
-.PHONY: install build dev lint test typecheck clean uninstall link unlink version publish install-package
+.PHONY: install build dev lint test typecheck clean uninstall link unlink version publish install-package install-completion uninstall-completion
 
 install: ## Install dependencies and build the project
 	npm install
@@ -42,3 +42,52 @@ publish: build ## Publish the package to npm (ensure you're logged in)
 
 install-package: ## Install this package globally via npm
 	npm i -g @ksw8954/git-ai-commit
+
+install-completion: ## Install shell completion for current shell (bash/zsh)
+	@CURRENT_SHELL=$$(basename "$$SHELL"); \
+	if [ "$$CURRENT_SHELL" = "zsh" ]; then \
+		RCFILE="$$HOME/.zshrc"; \
+		COMPLETION_LINE='eval "$$(git-ai-commit completion zsh)"'; \
+	elif [ "$$CURRENT_SHELL" = "bash" ]; then \
+		if [ -f "$$HOME/.bash_profile" ]; then \
+			RCFILE="$$HOME/.bash_profile"; \
+		else \
+			RCFILE="$$HOME/.bashrc"; \
+		fi; \
+		COMPLETION_LINE='eval "$$(git-ai-commit completion bash)"'; \
+	else \
+		echo "Unsupported shell: $$CURRENT_SHELL (only bash and zsh are supported)"; \
+		exit 1; \
+	fi; \
+	if grep -q "git-ai-commit completion" "$$RCFILE" 2>/dev/null; then \
+		echo "Completion already installed in $$RCFILE"; \
+	else \
+		echo "" >> "$$RCFILE"; \
+		echo "# git-ai-commit shell completion" >> "$$RCFILE"; \
+		echo "$$COMPLETION_LINE" >> "$$RCFILE"; \
+		echo "Completion installed in $$RCFILE"; \
+		echo "Run 'source $$RCFILE' or restart your shell to enable"; \
+	fi
+
+uninstall-completion: ## Remove shell completion from current shell config
+	@CURRENT_SHELL=$$(basename "$$SHELL"); \
+	if [ "$$CURRENT_SHELL" = "zsh" ]; then \
+		RCFILE="$$HOME/.zshrc"; \
+	elif [ "$$CURRENT_SHELL" = "bash" ]; then \
+		if [ -f "$$HOME/.bash_profile" ]; then \
+			RCFILE="$$HOME/.bash_profile"; \
+		else \
+			RCFILE="$$HOME/.bashrc"; \
+		fi; \
+	else \
+		echo "Unsupported shell: $$CURRENT_SHELL"; \
+		exit 1; \
+	fi; \
+	if grep -q "git-ai-commit completion" "$$RCFILE" 2>/dev/null; then \
+		sed -i.bak '/# git-ai-commit shell completion/d' "$$RCFILE"; \
+		sed -i.bak '/git-ai-commit completion/d' "$$RCFILE"; \
+		rm -f "$$RCFILE.bak"; \
+		echo "Completion removed from $$RCFILE"; \
+	else \
+		echo "No completion found in $$RCFILE"; \
+	fi
