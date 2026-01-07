@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.1 - 2026-01-07
+
+### Bug Fixes
+- Fix zsh completion not working due to fpath added after compinit
+- Fix install-completion to insert fpath before compinit in zshrc
+- Fix uninstall-completion to properly remove fpath line
+
 ## 1.1.0 - 2026-01-06
 
 ### New Features

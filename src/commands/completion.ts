@@ -129,20 +129,15 @@ complete -F _git_ai_commit git-ai-commit
   private generateZshCompletion(): string {
     return `#compdef git-ai-commit
 # git-ai-commit zsh completion
-# Add to ~/.zshrc:
-#   eval "$(git-ai-commit completion zsh)"
-# Or save to a file in your $fpath (e.g., ~/.zsh/completions/_git-ai-commit)
+# Installation:
+#   mkdir -p ~/.zsh/completions
+#   git-ai-commit completion zsh > ~/.zsh/completions/_git-ai-commit
+#   # Add to ~/.zshrc (before compinit): fpath=(~/.zsh/completions \$fpath)
+#   # Then restart shell or run: autoload -Uz compinit && compinit
 
 _git-ai-commit() {
-    local -a commands
-    commands=(
-        'commit:Generate AI-powered commit message'
-        'config:Manage git-ai-commit configuration'
-        'pr:Generate a pull request title and summary'
-        'tag:Create an annotated git tag with AI-generated notes'
-        'history:Manage git-ai-commit command history'
-        'completion:Generate shell completion scripts'
-    )
+    local curcontext="\$curcontext" state line
+    typeset -A opt_args
 
     _arguments -C \\
         '-v[output the version number]' \\
@@ -150,14 +145,23 @@ _git-ai-commit() {
         '-h[display help]' \\
         '--help[display help]' \\
         '1: :->command' \\
-        '*:: :->args'
+        '*:: :->args' && return
 
     case \$state in
         command)
+            local -a commands
+            commands=(
+                'commit:Generate AI-powered commit message'
+                'config:Manage git-ai-commit configuration'
+                'pr:Generate a pull request title and summary'
+                'tag:Create an annotated git tag with AI-generated notes'
+                'history:Manage git-ai-commit command history'
+                'completion:Generate shell completion scripts'
+            )
             _describe -t commands 'git-ai-commit commands' commands
             ;;
         args)
-            case \$words[1] in
+            case \$line[1] in
                 commit)
                     _arguments \\
                         '-k[OpenAI API key]:key:' \\
@@ -190,13 +194,18 @@ _git-ai-commit() {
                     ;;
                 pr)
                     _arguments \\
-                        '--base[Base branch to diff against]:branch:__git_branch_names' \\
-                        '--compare[Compare branch to describe]:branch:__git_branch_names' \\
+                        '--base[Base branch to diff against]:branch:->branches' \\
+                        '--compare[Compare branch to describe]:branch:->branches' \\
                         '-k[Override API key]:key:' \\
                         '--api-key[Override API key]:key:' \\
                         '-b[Override API base URL]:url:' \\
                         '--base-url[Override API base URL]:url:' \\
                         '--model[Override AI model]:model:'
+                    [[ \$state == branches ]] && {
+                        local -a branches
+                        branches=(\${(f)"\$(git branch --format='%(refname:short)' 2>/dev/null)"})
+                        _describe -t branches 'branches' branches
+                    }
                     ;;
                 tag)
                     _arguments \\
@@ -207,9 +216,14 @@ _git-ai-commit() {
                         '-m[Model to use]:model:' \\
                         '--model[Model to use]:model:' \\
                         '--message[Tag message to use directly]:message:' \\
-                        '-t[Existing tag to diff against]:tag:__git_tags' \\
-                        '--base-tag[Existing tag to diff against]:tag:__git_tags' \\
+                        '-t[Existing tag to diff against]:tag:->tags' \\
+                        '--base-tag[Existing tag to diff against]:tag:->tags' \\
                         '--prompt[Additional AI prompt instructions]:text:'
+                    [[ \$state == tags ]] && {
+                        local -a tags
+                        tags=(\${(f)"\$(git tag 2>/dev/null)"})
+                        _describe -t tags 'tags' tags
+                    }
                     ;;
                 history)
                     _arguments \\
@@ -226,22 +240,6 @@ _git-ai-commit() {
             ;;
     esac
 }
-
-# Helper function to complete git branches
-__git_branch_names() {
-    local -a branches
-    branches=(\${(f)"\$(git branch --format='%(refname:short)' 2>/dev/null)"})
-    _describe -t branches 'branches' branches
-}
-
-# Helper function to complete git tags  
-__git_tags() {
-    local -a tags
-    tags=(\${(f)"\$(git tag 2>/dev/null)"})
-    _describe -t tags 'tags' tags
-}
-
-_git-ai-commit "\$@"
 `;
   }
 
