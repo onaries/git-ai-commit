@@ -177,6 +177,7 @@ export class CommitCommand {
           status: "failure",
           details: diffResult.error,
           durationMs: Date.now() - start,
+          model: mergedModel,
         });
         process.exit(1);
       }
@@ -197,6 +198,7 @@ export class CommitCommand {
           status: "failure",
           details: aiResult.error,
           durationMs: Date.now() - start,
+          model: mergedModel,
         });
         process.exit(1);
       }
@@ -214,6 +216,7 @@ export class CommitCommand {
           status: "success",
           details: "message-only output",
           durationMs: Date.now() - start,
+          model: mergedModel,
         });
         return;
       }
@@ -231,6 +234,7 @@ export class CommitCommand {
           status: "cancelled",
           details: "user declined commit",
           durationMs: Date.now() - start,
+          model: mergedModel,
         });
         return;
       }
@@ -264,6 +268,7 @@ export class CommitCommand {
               status: "failure",
               details: "push failed",
               durationMs: Date.now() - start,
+              model: mergedModel,
             });
             process.exit(1);
           }
@@ -276,6 +281,7 @@ export class CommitCommand {
           status: "failure",
           details: "git commit failed",
           durationMs: Date.now() - start,
+          model: mergedModel,
         });
         process.exit(1);
       }
@@ -284,6 +290,7 @@ export class CommitCommand {
         args: safeArgs,
         status: "success",
         durationMs: Date.now() - start,
+        model: mergedModel,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -294,6 +301,7 @@ export class CommitCommand {
         status: "failure",
         details: message,
         durationMs: Date.now() - start,
+        model: options.model,
       });
       process.exit(1);
     }

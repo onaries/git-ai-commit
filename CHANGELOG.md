@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.1.2 - 2026-01-07
+
+### New Features
+- Add project info (name, path, git remote) to history entries
+- Add model info to history entries
+- Display project and model in `history` command output
+
 ## 1.1.1 - 2026-01-07
 
 ### Bug Fixes

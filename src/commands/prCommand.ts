@@ -50,7 +50,8 @@ export class PullRequestCommand {
           command: 'pr',
           args: { ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'failure',
-          details: err
+          details: err,
+          model: mergedModel
         });
         process.exit(1);
         return;
@@ -77,7 +78,8 @@ export class PullRequestCommand {
           command: 'pr',
           args: { ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'failure',
-          details: err
+          details: err,
+          model: mergedModel
         });
         process.exit(1);
         return;
@@ -87,7 +89,8 @@ export class PullRequestCommand {
       await LogService.append({
         command: 'pr',
         args: { ...options, apiKey: options.apiKey ? '***' : undefined },
-        status: 'success'
+        status: 'success',
+        model: mergedModel
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -96,7 +99,8 @@ export class PullRequestCommand {
         command: 'pr',
         args: { ...options, apiKey: options.apiKey ? '***' : undefined },
         status: 'failure',
-        details: message
+        details: message,
+        model: options.model
       });
       process.exit(1);
     }

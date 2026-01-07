@@ -38,11 +38,12 @@ export class HistoryCommand {
 
   private formatLine(e: any): string {
     const ts = new Date(e.timestamp).toISOString();
-    const args = Object.entries(e.args || {})
-      .filter(([k, v]) => v !== undefined && v !== null && v !== '')
-      .map(([k, v]) => `${k}=${JSON.stringify(v)}`)
-      .join(' ');
-    return `${ts}  ${e.command}  ${e.status}${e.durationMs ? ` (${e.durationMs}ms)` : ''}${args ? `  -- ${args}` : ''}${e.details ? `\n  > ${e.details}` : ''}`;
+    const projectName = e.project?.name || 'unknown';
+    const model = e.model || 'default';
+    const duration = e.durationMs ? ` (${e.durationMs}ms)` : '';
+    const details = e.details ? `\n    > ${e.details}` : '';
+    
+    return `${ts}  [${projectName}]  ${e.command}  ${e.status}${duration}  model=${model}${details}`;
   }
 
   private async handleHistory(options: HistoryOptions) {

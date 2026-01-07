@@ -1,8 +1,15 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import os from 'os';
+import { execSync } from 'child_process';
 
 export type LogStatus = 'success' | 'failure' | 'cancelled';
+
+export interface ProjectInfo {
+  name: string;
+  path: string;
+  gitRemote?: string;
+}
 
 export interface HistoryEntry {
   id: string;
@@ -12,6 +19,8 @@ export interface HistoryEntry {
   status: LogStatus;
   details?: string;
   durationMs?: number;
+  project?: ProjectInfo;
+  model?: string;
 }
 
 function getStorageDir(): string {
@@ -27,8 +36,25 @@ function genId(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function getProjectInfo(): ProjectInfo {
+  const cwd = process.cwd();
+  const name = path.basename(cwd);
+  
+  let gitRemote: string | undefined;
+  try {
+    gitRemote = execSync('git config --get remote.origin.url', { 
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe']
+    }).trim() || undefined;
+  } catch {
+    // Not a git repo or no remote
+  }
+
+  return { name, path: cwd, gitRemote };
+}
+
 export class LogService {
-  static async append(entry: Omit<HistoryEntry, 'id' | 'timestamp'> & { timestamp?: string; id?: string }): Promise<void> {
+  static async append(entry: Omit<HistoryEntry, 'id' | 'timestamp' | 'project'> & { timestamp?: string; id?: string; model?: string }): Promise<void> {
     const file = getHistoryPath();
     const dir = path.dirname(file);
     await fs.mkdir(dir, { recursive: true });
@@ -40,7 +66,9 @@ export class LogService {
       args: entry.args,
       status: entry.status,
       details: entry.details,
-      durationMs: entry.durationMs
+      durationMs: entry.durationMs,
+      project: getProjectInfo(),
+      model: entry.model
     };
 
     const line = JSON.stringify(finalized) + '\n';

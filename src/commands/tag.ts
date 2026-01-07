@@ -54,6 +54,8 @@ export class TagCommand {
 
   private async handleTag(tagName: string, options: TagOptions): Promise<void> {
     const trimmedName = tagName?.trim();
+    const storedConfig = ConfigService.getConfig();
+    const mergedModel = options.model || storedConfig.model;
 
     if (!trimmedName) {
       console.error('Tag name is required.');
@@ -61,7 +63,8 @@ export class TagCommand {
         command: 'tag',
         args: { name: tagName, ...options, apiKey: options.apiKey ? '***' : undefined },
         status: 'failure',
-        details: 'missing tag name'
+        details: 'missing tag name',
+        model: mergedModel
       });
       process.exit(1);
       return;
@@ -82,7 +85,8 @@ export class TagCommand {
           command: 'tag',
           args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'cancelled',
-          details: 'user declined to replace existing tag'
+          details: 'user declined to replace existing tag',
+          model: mergedModel
         });
         return;
       }
@@ -103,7 +107,8 @@ export class TagCommand {
               command: 'tag',
               args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
               status: 'failure',
-              details: 'remote tag deletion failed'
+              details: 'remote tag deletion failed',
+              model: mergedModel
             });
             process.exit(1);
             return;
@@ -122,7 +127,8 @@ export class TagCommand {
           command: 'tag',
           args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'failure',
-          details: 'local tag deletion failed'
+          details: 'local tag deletion failed',
+          model: mergedModel
         });
         process.exit(1);
         return;
@@ -154,7 +160,8 @@ export class TagCommand {
           command: 'tag',
           args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'failure',
-          details: historyResult.error ?? 'Unable to read commit history.'
+          details: historyResult.error ?? 'Unable to read commit history.',
+          model: mergedModel
         });
         process.exit(1);
         return;
@@ -171,7 +178,8 @@ export class TagCommand {
           command: 'tag',
           args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'failure',
-          details: message
+          details: message,
+          model: mergedModel
         });
         process.exit(1);
         return;
@@ -186,7 +194,8 @@ export class TagCommand {
           command: 'tag',
           args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
           status: 'failure',
-          details: aiResult.error ?? 'Failed to generate tag notes.'
+          details: aiResult.error ?? 'Failed to generate tag notes.',
+          model: mergedModel
         });
         process.exit(1);
         return;
@@ -207,7 +216,8 @@ export class TagCommand {
         command: 'tag',
         args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
         status: 'cancelled',
-        details: 'user declined tag creation'
+        details: 'user declined tag creation',
+        model: mergedModel
       });
       return;
     }
@@ -221,7 +231,8 @@ export class TagCommand {
         command: 'tag',
         args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
         status: 'failure',
-        details: 'git tag creation failed'
+        details: 'git tag creation failed',
+        model: mergedModel
       });
       process.exit(1);
       return;
@@ -251,7 +262,8 @@ export class TagCommand {
               command: 'tag',
               args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
               status: 'cancelled',
-              details: 'user declined force push'
+              details: 'user declined force push',
+              model: mergedModel
             });
             return;
           }
@@ -268,7 +280,8 @@ export class TagCommand {
                 command: 'tag',
                 args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
                 status: 'failure',
-                details: `tag force push to ${remote} failed`
+                details: `tag force push to ${remote} failed`,
+                model: mergedModel
               });
             }
           }
@@ -285,7 +298,8 @@ export class TagCommand {
                 command: 'tag',
                 args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
                 status: 'failure',
-                details: `tag push to ${remote} failed`
+                details: `tag push to ${remote} failed`,
+                model: mergedModel
               });
             }
           }
@@ -296,7 +310,8 @@ export class TagCommand {
     await LogService.append({
       command: 'tag',
       args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
-      status: 'success'
+      status: 'success',
+      model: mergedModel
     });
   }
 
