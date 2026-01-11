@@ -264,6 +264,26 @@ export class GitService {
     }
   }
 
+  static async getTagMessage(tagName: string): Promise<string | null> {
+    try {
+      // Get the tag object content
+      const { stdout } = await execFileAsync('git', ['tag', '-l', '-n999', tagName]);
+      if (!stdout.trim()) {
+        return null;
+      }
+      // Format: "tagname    message line 1\n            message line 2..."
+      // Remove the tag name prefix and clean up
+      const lines = stdout.split('\n');
+      const firstLine = lines[0] || '';
+      // Remove tag name from first line
+      const messageStart = firstLine.replace(new RegExp(`^${tagName}\\s*`), '');
+      const restLines = lines.slice(1).map(line => line.replace(/^\s{12}/, ''));
+      return [messageStart, ...restLines].join('\n').trim() || null;
+    } catch {
+      return null;
+    }
+  }
+
   static async remoteTagExists(tagName: string): Promise<boolean> {
     try {
       const { stdout } = await execAsync(`git ls-remote --tags origin refs/tags/${tagName}`);

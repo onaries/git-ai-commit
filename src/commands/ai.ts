@@ -355,7 +355,13 @@ export class AIService {
     }
   }
 
-  async generateTagNotes(tagName: string, commitLog: string, extraInstructions?: string): Promise<TagGenerationResult> {
+  async generateTagNotes(
+    tagName: string, 
+    commitLog: string, 
+    extraInstructions?: string, 
+    previousMessage?: string | null,
+    styleReference?: string | null
+  ): Promise<TagGenerationResult> {
     try {
       this.debugLog('Sending request to AI API for tag notes...');
       this.debugLog('Model:', this.model);
@@ -365,16 +371,26 @@ export class AIService {
         ? `${extraInstructions.trim()}`
         : '';
 
+      let userContent = `Commit log:\n${commitLog}`;
+      
+      if (styleReference && !previousMessage) {
+        userContent += `\n\n---\nStyle reference (follow this format):\n${styleReference}`;
+      }
+      
+      if (previousMessage) {
+        userContent += `\n\n---\nPrevious release notes for this tag (improve upon this):\n${previousMessage}`;
+      }
+
       const response = await this.createChatCompletion({
         model: this.model,
         messages: [
           {
             role: 'system',
-            content: generateTagPrompt(tagName, customInstructions, this.language)
+            content: generateTagPrompt(tagName, customInstructions, this.language, !!previousMessage, !!styleReference)
           },
           {
             role: 'user',
-            content: `Commit log:\n${commitLog}`
+            content: userContent
           }
         ],
         max_completion_tokens: 3000

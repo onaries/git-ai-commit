@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.3 - 2026-01-07
+
+### New Features
+- Auto-increment patch version when tag name is omitted
+- Use previous tag message as style reference for consistent formatting
+- Improve existing tag notes when recreating the same tag
+
+### Bug Fixes
+- Fix force push prompt showing unnecessarily after remote tag deletion
+
 ## 1.1.2 - 2026-01-07
 
 ### New Features

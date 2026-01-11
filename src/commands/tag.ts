@@ -20,16 +20,27 @@ export class TagCommand {
   constructor() {
     this.program = new Command('tag')
       .description('Create an annotated git tag with optional AI-generated notes')
-      .argument('<name>', 'Tag name to create')
+      .argument('[name]', 'Tag name to create (auto-increments patch version if omitted)')
       .option('-k, --api-key <key>', 'OpenAI API key (overrides env var)')
       .option('--base-url <url>', 'Custom API base URL (overrides env var)')
       .option('-m, --model <model>', 'Model to use (overrides env var)')
       .option('--message <message>', 'Tag message to use directly (skips AI generation)')
       .option('-t, --base-tag <tag>', 'Existing tag to diff against when generating notes')
       .option('--prompt <text>', 'Additional instructions to append to the AI prompt for this tag')
-      .action(async (tagName: string, options: TagOptions) => {
+      .action(async (tagName: string | undefined, options: TagOptions) => {
         await this.handleTag(tagName, options);
       });
+  }
+
+  private incrementPatchVersion(version: string): string | null {
+    // Match semver patterns: v1.2.3, 1.2.3, v1.2.3-beta, etc.
+    const match = version.match(/^(v?)(\d+)\.(\d+)\.(\d+)(.*)$/);
+    if (!match) {
+      return null;
+    }
+    const [, prefix, major, minor, patch, suffix] = match;
+    const newPatch = parseInt(patch, 10) + 1;
+    return `${prefix}${major}.${minor}.${newPatch}${suffix}`;
   }
 
   private resolveAIConfig(options: TagOptions): AIServiceConfig {
@@ -52,30 +63,58 @@ export class TagCommand {
     };
   }
 
-  private async handleTag(tagName: string, options: TagOptions): Promise<void> {
-    const trimmedName = tagName?.trim();
+  private async handleTag(tagName: string | undefined, options: TagOptions): Promise<void> {
     const storedConfig = ConfigService.getConfig();
     const mergedModel = options.model || storedConfig.model;
 
+    let trimmedName = tagName?.trim();
+
+    // If no tag name provided, auto-increment from latest tag
     if (!trimmedName) {
-      console.error('Tag name is required.');
-      await LogService.append({
-        command: 'tag',
-        args: { name: tagName, ...options, apiKey: options.apiKey ? '***' : undefined },
-        status: 'failure',
-        details: 'missing tag name',
-        model: mergedModel
-      });
-      process.exit(1);
-      return;
+      const latestTagResult = await GitService.getLatestTag();
+      
+      if (!latestTagResult.success || !latestTagResult.tag) {
+        console.error('No existing tags found. Please provide a tag name explicitly.');
+        await LogService.append({
+          command: 'tag',
+          args: { ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: 'no existing tags found for auto-increment',
+          model: mergedModel
+        });
+        process.exit(1);
+        return;
+      }
+
+      const newVersion = this.incrementPatchVersion(latestTagResult.tag);
+      
+      if (!newVersion) {
+        console.error(`Cannot parse version from tag "${latestTagResult.tag}". Please provide a tag name explicitly.`);
+        await LogService.append({
+          command: 'tag',
+          args: { ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'failure',
+          details: `cannot parse version from tag: ${latestTagResult.tag}`,
+          model: mergedModel
+        });
+        process.exit(1);
+        return;
+      }
+
+      console.log(`Latest tag: ${latestTagResult.tag}`);
+      console.log(`New tag: ${newVersion}`);
+      trimmedName = newVersion;
     }
 
     // Check if tag already exists locally
     const localTagExists = await GitService.tagExists(trimmedName);
     let remoteTagExists = false;
-    let wasTagReplaced = false;
+    let previousTagMessage: string | null = null;
 
     if (localTagExists) {
+      // Get existing tag message before deletion for reference
+      previousTagMessage = await GitService.getTagMessage(trimmedName);
+      
       console.log(`⚠️  Tag ${trimmedName} already exists locally.`);
       const shouldDelete = await this.confirmTagDelete(trimmedName);
 
@@ -134,7 +173,6 @@ export class TagCommand {
         return;
       }
       console.log(`✅ Local tag ${trimmedName} deleted`);
-      wasTagReplaced = true;
     }
 
     let tagMessage = options.message?.trim();
@@ -150,6 +188,15 @@ export class TagCommand {
           console.log(`Using latest tag ${baseTag} as base.`);
         } else {
           console.log('No existing tag found; using entire commit history.');
+        }
+      }
+
+      // Get style reference from base tag (if different from current tag being replaced)
+      let styleReferenceMessage: string | null = null;
+      if (baseTag && baseTag !== trimmedName) {
+        styleReferenceMessage = await GitService.getTagMessage(baseTag);
+        if (styleReferenceMessage) {
+          console.log(`Using ${baseTag} message as style reference.`);
         }
       }
 
@@ -186,7 +233,13 @@ export class TagCommand {
       }
 
       const aiService = new AIService(aiConfig);
-      const aiResult = await aiService.generateTagNotes(trimmedName, historyResult.log, options.prompt);
+      const aiResult = await aiService.generateTagNotes(
+        trimmedName, 
+        historyResult.log, 
+        options.prompt, 
+        previousTagMessage,
+        styleReferenceMessage
+      );
 
       if (!aiResult.success || !aiResult.notes) {
         console.error('Error:', aiResult.error ?? 'Failed to generate tag notes.');
@@ -249,8 +302,8 @@ export class TagCommand {
       const selectedRemotes = await this.selectRemotesForPush(trimmedName, remotes);
 
       if (selectedRemotes && selectedRemotes.length > 0) {
-        // If tag was replaced or remote tag still exists, use force push
-        const needsForcePush = wasTagReplaced || remoteTagExists;
+        // If remote tag still exists (user declined to delete), use force push
+        const needsForcePush = remoteTagExists;
 
         if (needsForcePush) {
           console.log(`\n⚠️  Tag ${trimmedName} may exist on remote. Force push is required.`);
