@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.4 - 2026-01-07
+
+### Bug Fixes
+- Support prefixed tag formats for auto-increment (e.g., `homepage-v0.3.0` → `homepage-v0.3.1`)
+
 ## 1.1.3 - 2026-01-07
 
 ### New Features

@@ -33,14 +33,14 @@ export class TagCommand {
   }
 
   private incrementPatchVersion(version: string): string | null {
-    // Match semver patterns: v1.2.3, 1.2.3, v1.2.3-beta, etc.
-    const match = version.match(/^(v?)(\d+)\.(\d+)\.(\d+)(.*)$/);
+    // Match semver patterns: v1.2.3, 1.2.3, prefix-v1.2.3, prefix-1.2.3, etc.
+    const match = version.match(/^(.*?-?)?(v?)(\d+)\.(\d+)\.(\d+)(.*)$/);
     if (!match) {
       return null;
     }
-    const [, prefix, major, minor, patch, suffix] = match;
+    const [, prefix = '', v = '', major, minor, patch, suffix = ''] = match;
     const newPatch = parseInt(patch, 10) + 1;
-    return `${prefix}${major}.${minor}.${newPatch}${suffix}`;
+    return `${prefix}${v}${major}.${minor}.${newPatch}${suffix}`;
   }
 
   private resolveAIConfig(options: TagOptions): AIServiceConfig {
