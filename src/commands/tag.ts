@@ -106,9 +106,9 @@ export class TagCommand {
       trimmedName = newVersion;
     }
 
-    // Check if tag already exists locally
+    // Check if tag already exists locally or on remote
     const localTagExists = await GitService.tagExists(trimmedName);
-    let remoteTagExists = false;
+    let remoteTagExists = await GitService.remoteTagExists(trimmedName);
     let previousTagMessage: string | null = null;
 
     if (localTagExists) {
@@ -129,9 +129,6 @@ export class TagCommand {
         });
         return;
       }
-
-      // Check if tag exists on remote
-      remoteTagExists = await GitService.remoteTagExists(trimmedName);
 
       if (remoteTagExists) {
         console.log(`⚠️  Tag ${trimmedName} also exists on remote.`);
@@ -173,6 +170,28 @@ export class TagCommand {
         return;
       }
       console.log(`✅ Local tag ${trimmedName} deleted`);
+    } else if (remoteTagExists) {
+      console.log(`⚠️  Tag ${trimmedName} exists on remote but not locally.`);
+      const shouldDeleteRemote = await this.confirmRemoteTagDelete(trimmedName);
+
+      if (shouldDeleteRemote) {
+        console.log(`Deleting remote tag ${trimmedName}...`);
+        const remoteDeleted = await GitService.deleteRemoteTag(trimmedName);
+        if (!remoteDeleted) {
+          console.error('❌ Failed to delete remote tag');
+          await LogService.append({
+            command: 'tag',
+            args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+            status: 'failure',
+            details: 'remote tag deletion failed',
+            model: mergedModel
+          });
+          process.exit(1);
+          return;
+        }
+        console.log(`✅ Remote tag ${trimmedName} deleted`);
+        remoteTagExists = false;
+      }
     }
 
     let tagMessage = options.message?.trim();
