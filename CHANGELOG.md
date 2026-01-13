@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.1.5 - 2026-01-07
+## 1.1.5 - 2026-01-13
 
 ### Bug Fixes
 - Check remote tag existence before creating new tag (prevents push rejection)

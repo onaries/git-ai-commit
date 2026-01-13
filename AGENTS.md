@@ -44,6 +44,7 @@
 When updating the version, always perform these steps together:
 1. **Bump package version**: Run `npm version patch|minor|major --no-git-tag-version` to update `package.json`.
 2. **Update CHANGELOG.md**: Add a new section at the top with the version number, date, and categorized changes (New Features, Bug Fixes, Improvements).
+   - **IMPORTANT**: Always check today's date with `date +%Y-%m-%d` before writing the changelog date.
 3. **Verify CLI version**: Run `npm run build && node dist/index.js -v` to confirm the version matches.
 4. **Commit together**: Include `package.json`, `package-lock.json`, `CHANGELOG.md`, and any related source changes in a single commit.
 5. **Re-link if needed**: Run `npm link` to update the globally installed CLI version.
