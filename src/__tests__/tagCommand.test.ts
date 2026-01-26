@@ -15,7 +15,10 @@ jest.mock('../commands/git', () => ({
     deleteLocalTag: jest.fn(),
     deleteRemoteTag: jest.fn(),
     forcePushTag: jest.fn(),
-    getRemotes: jest.fn()
+    getRemotes: jest.fn(),
+    getTagMessage: jest.fn(),
+    getTagBefore: jest.fn(),
+    getRecentTags: jest.fn()
   }
 }));
 
@@ -54,6 +57,10 @@ describe('TagCommand', () => {
     // Tag doesn't exist by default
     (GitService.tagExists as jest.Mock).mockResolvedValue(false);
     (GitService.remoteTagExists as jest.Mock).mockResolvedValue(false);
+
+    (GitService.getTagMessage as jest.Mock).mockResolvedValue(null);
+    (GitService.getTagBefore as jest.Mock).mockResolvedValue({ success: false, error: 'No earlier tag found.' });
+    (GitService.getRecentTags as jest.Mock).mockResolvedValue([]);
 
     // Default: no remotes configured (skip push flow)
     (GitService.getRemotes as jest.Mock).mockResolvedValue([]);
@@ -120,7 +127,7 @@ describe('TagCommand', () => {
       model: 'gpt-test',
       language: 'ko'
     });
-    expect(mockGenerateTagNotes).toHaveBeenCalledWith('v1.3.0', '- feat: add feature\n- fix: bug fix', undefined);
+    expect(mockGenerateTagNotes).toHaveBeenCalledWith('v1.3.0', '- feat: add feature\n- fix: bug fix', undefined, null, null);
     expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.3.0', '- Added feature\n- Fixed bug');
     expect(GitService.pushTag).not.toHaveBeenCalled();
   });

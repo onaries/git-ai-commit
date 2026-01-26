@@ -14,6 +14,13 @@ export interface TagOptions {
   prompt?: string;
 }
 
+interface TagStyleMismatch {
+  newTag: string;
+  newPattern: string;
+  dominantPattern: string;
+  examples: string[];
+}
+
 export class TagCommand {
   private program: Command;
 
@@ -106,7 +113,22 @@ export class TagCommand {
       trimmedName = newVersion;
     }
 
-    // Check if tag already exists locally or on remote
+    const styleMismatch = await this.checkTagStyleMismatch(trimmedName);
+    if (styleMismatch) {
+      const shouldProceed = await this.confirmStyleMismatch(styleMismatch);
+      if (!shouldProceed) {
+        console.log('Tag creation cancelled by user.');
+        await LogService.append({
+          command: 'tag',
+          args: { name: trimmedName, ...options, apiKey: options.apiKey ? '***' : undefined },
+          status: 'cancelled',
+          details: `tag style mismatch: "${styleMismatch.newPattern}" vs "${styleMismatch.dominantPattern}"`,
+          model: mergedModel
+        });
+        return;
+      }
+    }
+
     const localTagExists = await GitService.tagExists(trimmedName);
     let remoteTagExists = await GitService.remoteTagExists(trimmedName);
     let previousTagMessage: string | null = null;
@@ -219,7 +241,59 @@ export class TagCommand {
         }
       }
 
-      const historyResult = await GitService.getCommitSummariesSince(baseTag);
+      let historyResult = await GitService.getCommitSummariesSince(baseTag);
+
+      if (!historyResult.success && baseTag) {
+        console.log(`\n⚠️  No commits found since tag ${baseTag}.`);
+
+        const shouldDeleteBase = await this.confirmBaseTagDelete(baseTag);
+        if (shouldDeleteBase) {
+          const olderTagResult = await GitService.getTagBefore(baseTag);
+          const olderBase = olderTagResult.success ? olderTagResult.tag : undefined;
+
+          const localExists = await GitService.tagExists(baseTag);
+          if (localExists) {
+            const localDeleted = await GitService.deleteLocalTag(baseTag);
+            if (localDeleted) {
+              console.log(`✅ Local tag ${baseTag} deleted`);
+            } else {
+              console.error(`❌ Failed to delete local tag ${baseTag}`);
+            }
+          }
+
+          const remoteExists = await GitService.remoteTagExists(baseTag);
+          if (remoteExists) {
+            const shouldDeleteRemote = await this.confirmRemoteTagDelete(baseTag);
+            if (shouldDeleteRemote) {
+              const remoteDeleted = await GitService.deleteRemoteTag(baseTag);
+              if (remoteDeleted) {
+                console.log(`✅ Remote tag ${baseTag} deleted`);
+              } else {
+                console.error(`❌ Failed to delete remote tag ${baseTag}`);
+              }
+            }
+          }
+
+          if (olderBase) {
+            console.log(`Using ${olderBase} as new base tag.`);
+            baseTag = olderBase;
+          } else {
+            console.log('No earlier tag found; using entire commit history.');
+            baseTag = undefined;
+          }
+
+          styleReferenceMessage = null;
+          if (baseTag && baseTag !== trimmedName) {
+            styleReferenceMessage = await GitService.getTagMessage(baseTag);
+            if (styleReferenceMessage) {
+              console.log(`Using ${baseTag} message as style reference.`);
+            }
+          }
+
+          historyResult = await GitService.getCommitSummariesSince(baseTag);
+        }
+      }
+
       if (!historyResult.success || !historyResult.log) {
         console.error('Error:', historyResult.error ?? 'Unable to read commit history.');
         await LogService.append({
@@ -387,6 +461,69 @@ export class TagCommand {
     });
   }
 
+  private extractTagPattern(tagName: string): string {
+    return tagName.replace(/[a-zA-Z]+/g, '{word}').replace(/\d+/g, '{n}');
+  }
+
+  private async checkTagStyleMismatch(newTagName: string): Promise<TagStyleMismatch | null> {
+    const recentTags = await GitService.getRecentTags(10);
+    if (recentTags.length === 0) {
+      return null;
+    }
+
+    const newPattern = this.extractTagPattern(newTagName);
+
+    const patternCounts = new Map<string, string[]>();
+    for (const tag of recentTags) {
+      const pattern = this.extractTagPattern(tag);
+      const existing = patternCounts.get(pattern) || [];
+      existing.push(tag);
+      patternCounts.set(pattern, existing);
+    }
+
+    let dominantPattern = '';
+    let maxCount = 0;
+    let dominantExamples: string[] = [];
+    for (const [pattern, tags] of patternCounts) {
+      if (tags.length > maxCount) {
+        maxCount = tags.length;
+        dominantPattern = pattern;
+        dominantExamples = tags;
+      }
+    }
+
+    if (dominantPattern && dominantPattern !== newPattern && maxCount >= 2) {
+      return {
+        newTag: newTagName,
+        newPattern,
+        dominantPattern,
+        examples: dominantExamples.slice(0, 3)
+      };
+    }
+
+    return null;
+  }
+
+  private async confirmStyleMismatch(mismatch: TagStyleMismatch): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    console.log(`\n⚠️  Tag name style mismatch detected.`);
+    console.log(`  New tag:      ${mismatch.newTag} (pattern: ${mismatch.newPattern})`);
+    console.log(`  Recent tags:  ${mismatch.examples.join(', ')} (pattern: ${mismatch.dominantPattern})`);
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Proceed with "${mismatch.newTag}" anyway? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
   private async selectRemotesForPush(tagName: string, remotes: string[]): Promise<string[] | null> {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -474,6 +611,22 @@ export class TagCommand {
 
     const answer: string = await new Promise(resolve => {
       rl.question(`Also delete remote tag ${tagName}? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
+  private async confirmBaseTagDelete(tagName: string): Promise<boolean> {
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Delete tag ${tagName} and use an older base? (y/n): `, resolve);
     });
 
     rl.close();

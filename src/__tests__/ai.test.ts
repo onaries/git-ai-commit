@@ -6,6 +6,22 @@ import OpenAI from 'openai';
 jest.mock('openai');
 const MockedOpenAI = OpenAI as jest.MockedClass<typeof OpenAI>;
 
+function createMockStream(content: string | null) {
+  const chunks = content
+    ? content.split('').map(ch => ({
+        choices: [{ delta: { content: ch } }]
+      }))
+    : [];
+
+  return {
+    [Symbol.asyncIterator]: async function* () {
+      for (const chunk of chunks) {
+        yield chunk;
+      }
+    }
+  };
+}
+
 describe('AIService', () => {
   let aiService: AIService;
   let mockOpenai: jest.Mocked<OpenAI>;
@@ -32,15 +48,9 @@ describe('AIService', () => {
 
   describe('generateCommitMessage', () => {
     it('should return success with commit message when API call succeeds', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: 'feat: add new feature'
-          }
-        }]
-      };
-
-      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream('feat: add new feature')
+      );
 
       const diff = 'diff --git a/file.txt b/file.txt\nnew file mode 100644';
       const result = await aiService.generateCommitMessage(diff);
@@ -66,20 +76,15 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_completion_tokens: 3000
+        max_completion_tokens: 3000,
+        stream: true
       });
     });
 
     it('should return error when API returns no message', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: null
-          }
-        }]
-      };
-
-      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream(null)
+      );
 
       const diff = 'diff --git a/file.txt b/file.txt\nnew file mode 100644';
       const result = await aiService.generateCommitMessage(diff);
@@ -120,17 +125,9 @@ describe('AIService', () => {
         }
       );
 
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: 'feat: add retry fallback'
-          }
-        }]
-      };
-
       (mockOpenai.chat.completions.create as jest.Mock)
         .mockRejectedValueOnce(error)
-        .mockResolvedValueOnce(mockResponse);
+        .mockResolvedValueOnce(createMockStream('feat: add retry fallback'));
 
       const diff = 'diff --git a/file.txt b/file.txt\nnew file mode 100644';
       const result = await aiService.generateCommitMessage(diff);
@@ -156,7 +153,8 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_completion_tokens: 3000
+        max_completion_tokens: 3000,
+        stream: true
       });
 
       expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(2, {
@@ -175,20 +173,15 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 3000
+        max_tokens: 3000,
+        stream: true
       });
     });
 
     it('should strip markdown formatting from commit header', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: '**chore(track_object): 불필요한 줄바꿈 제거하여 가독성 개선**'
-          }
-        }]
-      };
-
-      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream('**chore(track_object): 불필요한 줄바꿈 제거하여 가독성 개선**')
+      );
 
       const result = await aiService.generateCommitMessage('diff --git a/file b/file');
 
@@ -199,15 +192,9 @@ describe('AIService', () => {
     });
 
     it('should keep only the first commit header when multiple are returned', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: 'feat: add payment API\nchore: update dependencies'
-          }
-        }]
-      };
-
-      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream('feat: add payment API\nchore: update dependencies')
+      );
 
       const result = await aiService.generateCommitMessage('diff --git a/file b/file');
 
@@ -228,22 +215,18 @@ describe('AIService', () => {
 
   describe('generatePullRequestMessage', () => {
     it('should return success with PR message when API call succeeds', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: 'Add caching layer\n\n## Summary\n- cache expensive queries to reduce latency\n\n## Testing\n- npm run test'
-          }
-        }]
-      };
+      const prContent = 'Add caching layer\n\n## Summary\n- cache expensive queries to reduce latency\n\n## Testing\n- npm run test';
 
-      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream(prContent)
+      );
 
       const diff = 'diff --git a/app.ts b/app.ts\nindex 123..456 100644';
       const result = await aiService.generatePullRequestMessage('main', 'feature/cache', diff);
 
       expect(result).toEqual({
         success: true,
-        message: mockResponse.choices[0].message.content
+        message: prContent
       });
 
       expect(mockOpenai.chat.completions.create).toHaveBeenCalledWith({
@@ -258,21 +241,15 @@ describe('AIService', () => {
             content: `Git diff between main and feature/cache:\n${diff}`
           }
         ],
-        max_completion_tokens: 4000
+        max_completion_tokens: 4000,
+        stream: true
       });
     });
 
     it('should return error when API returns no content', async () => {
-      const mockResponse = {
-        choices: [{
-          message: {
-            content: '',
-            reasoning_content: ''
-          }
-        }]
-      };
-
-      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(mockResponse);
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream(null)
+      );
 
       const result = await aiService.generatePullRequestMessage('main', 'feature/cache', 'diff');
 

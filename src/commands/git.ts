@@ -210,6 +210,41 @@ export class GitService {
     }
   }
 
+  static async getRecentTags(count = 10): Promise<string[]> {
+    try {
+      const { stdout } = await execAsync(
+        `git tag --sort=-creatordate | head -n ${count}`
+      );
+      return stdout
+        .split('\n')
+        .map(line => line.trim())
+        .filter(line => line.length > 0);
+    } catch {
+      return [];
+    }
+  }
+
+  static async getTagBefore(tagName: string): Promise<GitTagResult> {
+    try {
+      const { stdout: tagCommit } = await execAsync(`git rev-list -n 1 ${tagName}`);
+      const commit = tagCommit.trim();
+      if (!commit) {
+        return { success: false, error: 'Could not resolve tag to a commit.' };
+      }
+
+      const { stdout } = await execAsync(`git describe --tags --abbrev=0 ${commit}~1`);
+      const tag = stdout.trim();
+
+      if (!tag) {
+        return { success: false, error: 'No earlier tag found.' };
+      }
+
+      return { success: true, tag };
+    } catch {
+      return { success: false, error: 'No earlier tag found.' };
+    }
+  }
+
   static async getCommitSummariesSince(tag?: string): Promise<GitLogResult> {
     try {
       const logCommand = tag

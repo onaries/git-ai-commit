@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import { type ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
 import { generateCommitPrompt } from '../prompts/commit';
 import { generateTagPrompt } from '../prompts/tag';
 import { generatePullRequestPrompt } from '../prompts/pr';
@@ -134,29 +135,70 @@ export class AIService {
     return { ...rest };
   }
 
-  private async createChatCompletion(
-    request: OpenAI.ChatCompletionCreateParamsNonStreaming,
+  private readonly spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+  private writeProgress(tokenCount: number, frameIndex: number): void {
+    const frame = this.spinnerFrames[frameIndex % this.spinnerFrames.length];
+    process.stderr.write(`\r${frame} Streaming response... (${tokenCount} tokens)`);
+  }
+
+  private clearProgress(): void {
+    process.stderr.write('\r\x1b[K');
+  }
+
+  private async createStreamingCompletion(
+    request: ChatCompletionCreateParamsNonStreaming,
     attempt = 0
-  ): Promise<OpenAI.ChatCompletion> {
+  ): Promise<string> {
     try {
-      return await this.openai.chat.completions.create(request);
+      const stream = await this.openai.chat.completions.create({
+        ...request,
+        stream: true
+      });
+
+      const chunks: string[] = [];
+      let tokenCount = 0;
+      let frameIndex = 0;
+      const showProgress = this.verbose && process.stderr.isTTY;
+
+      for await (const chunk of stream) {
+        const delta = chunk.choices[0]?.delta?.content;
+        if (delta) {
+          chunks.push(delta);
+          tokenCount++;
+          if (showProgress) {
+            this.writeProgress(tokenCount, frameIndex++);
+          }
+        }
+      }
+
+      if (showProgress) {
+        this.clearProgress();
+        this.debugLog(`Streaming complete (${tokenCount} tokens)`);
+      }
+
+      return chunks.join('');
     } catch (error) {
+      if (this.verbose && process.stderr.isTTY) {
+        this.clearProgress();
+      }
+
       if (attempt < 3 && this.isUnsupportedValueError(error, 'temperature')) {
         const fallbackRequest = this.removeTemperature(request);
         this.debugLog('Retrying without temperature due to unsupported value error.');
-        return await this.createChatCompletion(fallbackRequest, attempt + 1);
+        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
       }
 
       if (this.isUnsupportedTokenParamError(error, 'max_completion_tokens')) {
         const fallbackRequest = this.swapTokenParam(request, 'max_tokens');
         this.debugLog('Retrying with max_tokens due to unsupported max_completion_tokens error.');
-        return await this.createChatCompletion(fallbackRequest, attempt + 1);
+        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
       }
 
       if (this.isUnsupportedTokenParamError(error, 'max_tokens')) {
         const fallbackRequest = this.swapTokenParam(request, 'max_completion_tokens');
         this.debugLog('Retrying with max_completion_tokens due to unsupported max_tokens error.');
-        return await this.createChatCompletion(fallbackRequest, attempt + 1);
+        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
       }
 
       throw error;
@@ -205,7 +247,7 @@ export class AIService {
         ? `Git diff will be provided separately in the user message.\n\n## Additional User Instructions\n${extraInstructions.trim()}`
         : 'Git diff will be provided separately in the user message.';
       
-      const response = await this.createChatCompletion({
+      const content = await this.createStreamingCompletion({
         model: this.model,
         messages: [
           {
@@ -224,36 +266,8 @@ export class AIService {
         max_completion_tokens: 3000
       });
 
-      this.debugLog('API Response received:', JSON.stringify(response, null, 2));
+      let finalMessage = content.trim() || null;
 
-      const choice = response.choices[0];
-      const message = choice?.message?.content?.trim();
-      
-      // Handle reasoning content if available (type assertion for custom API response)
-      const messageAny = choice?.message as any;
-      const reasoningMessage = messageAny?.reasoning_content?.trim();
-      
-      // Try to extract commit message from reasoning content if regular content is null
-      let finalMessage = message;
-      if (!finalMessage && reasoningMessage) {
-        // Look for commit message pattern in reasoning content
-        const commitMatch = reasoningMessage.match(/(?:feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert): .+/);
-        if (commitMatch) {
-          finalMessage = commitMatch[0].trim();
-        } else {
-          // Look for any line that starts with conventional commit types
-          const typeMatch = reasoningMessage.match(/(?:feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)[^:]*: .+/);
-          if (typeMatch) {
-            finalMessage = typeMatch[0].trim();
-          } else {
-            // Try to find a short descriptive line
-            const lines = reasoningMessage.split('\n').filter((line: string) => line.trim().length > 0);
-            const shortLine = lines.find((line: string) => line.length < 100 && line.includes('version'));
-            finalMessage = shortLine ? `chore: ${shortLine.trim()}` : `chore: update files`;
-          }
-        }
-      }
-      
       if (!finalMessage) {
         this.debugLog('No message found in response');
         return {
@@ -381,7 +395,7 @@ export class AIService {
         userContent += `\n\n---\nPrevious release notes for this tag (improve upon this):\n${previousMessage}`;
       }
 
-      const response = await this.createChatCompletion({
+      const content = await this.createStreamingCompletion({
         model: this.model,
         messages: [
           {
@@ -396,13 +410,7 @@ export class AIService {
         max_completion_tokens: 3000
       });
 
-      const choice = response.choices[0];
-      const message = choice?.message?.content?.trim();
-
-      const messageAny = choice?.message as any;
-      const reasoningMessage = messageAny?.reasoning_content?.trim();
-
-      const finalNotes = message || reasoningMessage;
+      const finalNotes = content.trim() || null;
 
       if (!finalNotes) {
         this.debugLog('No notes found in response');
@@ -435,7 +443,7 @@ export class AIService {
       this.debugLog('Model:', this.model);
       this.debugLog('Base URL:', this.openai.baseURL);
 
-      const response = await this.createChatCompletion({
+      const content = await this.createStreamingCompletion({
         model: this.model,
         messages: [
           {
@@ -455,13 +463,7 @@ export class AIService {
         max_completion_tokens: 4000
       });
 
-      const choice = response.choices[0];
-      const message = choice?.message?.content?.trim();
-
-      const messageAny = choice?.message as any;
-      const reasoningMessage = messageAny?.reasoning_content?.trim();
-
-      const finalMessage = message || reasoningMessage;
+      const finalMessage = content.trim() || null;
 
       if (!finalMessage) {
         return {

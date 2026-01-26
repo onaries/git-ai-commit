@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.1.6 - 2026-01-26
+
+### New Features
+- Stream AI responses with real-time token counter display (`⠹ Streaming response... (47 tokens)`)
+- Detect tag name style mismatch against recent tags and warn before creation
+- Prompt to delete base tag and retry with older base when no commits found since latest tag
+
+### Improvements
+- Convert all AI API calls (commit, tag, PR) from blocking to streaming for faster perceived response
+- Add `getRecentTags()` and `getTagBefore()` to GitService for tag history navigation
+
 ## 1.1.5 - 2026-01-13
 
 ### Bug Fixes
