@@ -61,6 +61,7 @@ export class PullRequestCommand {
         apiKey: mergedApiKey!,
         baseURL: mergedBaseURL,
         model: mergedModel,
+        fallbackModel: existingConfig.fallbackModel,
         language: existingConfig.language,
         verbose: false
       });

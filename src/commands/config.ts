@@ -9,6 +9,7 @@ export interface EnvironmentConfig {
   apiKey?: string;
   baseURL?: string;
   model?: string;
+  fallbackModel?: string;
   mode: 'custom' | 'openai';
   language: SupportedLanguage;
   autoPush: boolean;
@@ -18,6 +19,7 @@ interface StoredConfig {
   apiKey?: string;
   baseURL?: string;
   model?: string;
+  fallbackModel?: string;
   mode?: 'custom' | 'openai';
   language?: SupportedLanguage | string;
   autoPush?: boolean;
@@ -111,6 +113,7 @@ export class ConfigService {
     const apiKey = fileConfig.apiKey ?? envConfig.apiKey;
     const baseURL = fileConfig.baseURL ?? envConfig.baseURL;
     const model = fileConfig.model ?? envConfig.model ?? DEFAULT_MODEL;
+    const fallbackModel = fileConfig.fallbackModel;
     const language = this.normalizeLanguage(fileConfig.language ?? envConfig.language);
     const autoPush = typeof fileConfig.autoPush === 'boolean' ? fileConfig.autoPush : envConfig.autoPush;
 
@@ -118,6 +121,7 @@ export class ConfigService {
       apiKey,
       baseURL,
       model,
+      fallbackModel,
       mode,
       language,
       autoPush

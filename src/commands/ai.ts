@@ -9,6 +9,7 @@ export interface AIServiceConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
+  fallbackModel?: string;
   language?: SupportedLanguage;
   verbose?: boolean;
 }
@@ -34,6 +35,7 @@ export interface PullRequestGenerationResult {
 export class AIService {
   private openai: OpenAI;
   private model: string;
+  private fallbackModel?: string;
   private language: SupportedLanguage;
   private verbose: boolean;
 
@@ -43,6 +45,7 @@ export class AIService {
       baseURL: config.baseURL
     });
     this.model = config.model || 'zai-org/GLM-4.5-FP8';
+    this.fallbackModel = config.fallbackModel;
     this.language = config.language || 'ko';
     this.verbose = config.verbose ?? true;
   }
@@ -51,6 +54,12 @@ export class AIService {
     if (this.verbose) {
       console.log(...args);
     }
+  }
+
+  private isRateLimitError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const status = (error as { status?: number }).status;
+    return status === 429;
   }
 
   private isUnsupportedTokenParamError(
@@ -251,6 +260,12 @@ export class AIService {
       if (this.isUnsupportedTokenParamError(error, 'max_tokens')) {
         const fallbackRequest = this.swapTokenParam(request, 'max_completion_tokens');
         this.debugLog('Retrying with max_completion_tokens due to unsupported max_tokens error.');
+        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
+      }
+
+      if (this.isRateLimitError(error) && this.fallbackModel && request.model !== this.fallbackModel) {
+        this.debugLog(`Rate limited (429). Retrying with fallback model: ${this.fallbackModel}`);
+        const fallbackRequest = { ...request, model: this.fallbackModel };
         return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
       }
 

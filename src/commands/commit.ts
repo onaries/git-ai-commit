@@ -161,6 +161,7 @@ export class CommitCommand {
         apiKey: mergedApiKey!,
         baseURL: mergedBaseURL,
         model: mergedModel,
+        fallbackModel: existingConfig.fallbackModel,
         language: existingConfig.language,
         verbose: !messageOnly,
       };

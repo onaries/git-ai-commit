@@ -66,6 +66,7 @@ export class TagCommand {
       apiKey: mergedApiKey!,
       baseURL: mergedBaseURL,
       model: mergedModel,
+      fallbackModel: storedConfig.fallbackModel,
       language: storedConfig.language
     };
   }

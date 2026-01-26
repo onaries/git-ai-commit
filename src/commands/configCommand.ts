@@ -8,6 +8,7 @@ export interface ConfigOptions {
   apiKey?: string;
   baseUrl?: string;
   model?: string;
+  fallbackModel?: string;
   mode?: 'custom' | 'openai';
 }
 
@@ -24,6 +25,7 @@ export class ConfigCommand {
       .option('-k, --api-key <key>', 'Persist API key for AI requests (overrides environment variables)')
       .option('-b, --base-url <url>', 'Persist API base URL (overrides environment variables)')
       .option('-m, --model <model>', 'Persist default AI model')
+      .option('--fallback-model <model>', 'Persist fallback model for rate limit (429) retry')
       .option('--mode <mode>', 'Persist AI mode (custom | openai)')
       .action(this.handleConfig.bind(this));
   }
@@ -62,6 +64,7 @@ export class ConfigCommand {
       apiKey?: string;
       baseURL?: string;
       model?: string;
+      fallbackModel?: string;
       mode?: 'custom' | 'openai';
       language?: SupportedLanguage;
       autoPush?: boolean;
@@ -87,6 +90,10 @@ export class ConfigCommand {
       updates.model = this.sanitizeStringValue(options.model);
     }
 
+    if (options.fallbackModel !== undefined) {
+      updates.fallbackModel = this.sanitizeStringValue(options.fallbackModel);
+    }
+
     if (options.mode) {
       updates.mode = this.validateMode(options.mode);
     }
@@ -102,6 +109,7 @@ export class ConfigCommand {
       console.log('  git-ai-commit config -b https://api.test    # Persist custom API base URL');
       console.log('  git-ai-commit config --mode openai          # Use OpenAI-compatible environment defaults');
       console.log('  git-ai-commit config --model gpt-4o-mini    # Persist preferred AI model');
+      console.log('  git-ai-commit config --fallback-model glm-4-flash  # Fallback model for 429 retry');
       return;
     }
 
@@ -125,6 +133,7 @@ export class ConfigCommand {
         console.log(`API Key: ${config.apiKey ? '***' + config.apiKey.slice(-4) : 'Not set'}`);
         console.log(`Base URL: ${config.baseURL || 'Not set (using provider default)'}`);
         console.log(`Model: ${config.model || 'zai-org/GLM-4.5-FP8 (default)'}`);
+        console.log(`Fallback Model: ${config.fallbackModel || 'Not set'}`);
         console.log(`Mode: ${config.mode || 'custom (default)'}`);
       } catch (error) {
         console.error('Error reading configuration:', error instanceof Error ? error.message : error);
