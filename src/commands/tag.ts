@@ -67,6 +67,7 @@ export class TagCommand {
       baseURL: mergedBaseURL,
       model: mergedModel,
       fallbackModel: storedConfig.fallbackModel,
+      reasoningEffort: storedConfig.reasoningEffort,
       language: storedConfig.language
     };
   }

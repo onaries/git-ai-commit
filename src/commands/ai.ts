@@ -5,11 +5,14 @@ import { generateTagPrompt } from '../prompts/tag';
 import { generatePullRequestPrompt } from '../prompts/pr';
 import { SupportedLanguage } from './config';
 
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+
 export interface AIServiceConfig {
   apiKey: string;
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
+  reasoningEffort?: ReasoningEffort;
   language?: SupportedLanguage;
   verbose?: boolean;
 }
@@ -36,6 +39,7 @@ export class AIService {
   private openai: OpenAI;
   private model: string;
   private fallbackModel?: string;
+  private reasoningEffort?: ReasoningEffort;
   private language: SupportedLanguage;
   private verbose: boolean;
 
@@ -46,6 +50,7 @@ export class AIService {
     });
     this.model = config.model || 'zai-org/GLM-4.5-FP8';
     this.fallbackModel = config.fallbackModel;
+    this.reasoningEffort = config.reasoningEffort;
     this.language = config.language || 'ko';
     this.verbose = config.verbose ?? true;
   }
@@ -170,10 +175,13 @@ export class AIService {
         }, 100);
       }
 
-      const stream = await this.openai.chat.completions.create({
+      const streamParams = {
         ...request,
-        stream: true
-      });
+        stream: true as const,
+        ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {})
+      };
+
+      const stream = await this.openai.chat.completions.create(streamParams);
 
       const contentChunks: string[] = [];
       let reasoningTokens = 0;

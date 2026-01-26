@@ -62,6 +62,7 @@ export class PullRequestCommand {
         baseURL: mergedBaseURL,
         model: mergedModel,
         fallbackModel: existingConfig.fallbackModel,
+        reasoningEffort: existingConfig.reasoningEffort,
         language: existingConfig.language,
         verbose: false
       });

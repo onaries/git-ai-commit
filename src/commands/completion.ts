@@ -40,7 +40,7 @@ _git_ai_commit() {
 
     # Command-specific options
     local commit_opts="-k --api-key -b --base-url --model -m --message-only -p --push --prompt --no-verify"
-    local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --mode"
+    local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --reasoning-effort --mode"
     local pr_opts="--base --compare -k --api-key -b --base-url --model"
     local tag_opts="-k --api-key --base-url -m --model --message -t --base-tag --prompt"
     local history_opts="-l --limit --json --clear"

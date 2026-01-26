@@ -5,11 +5,14 @@ import path from 'path';
 
 export type SupportedLanguage = 'ko' | 'en';
 
+export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
+
 export interface EnvironmentConfig {
   apiKey?: string;
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
+  reasoningEffort?: ReasoningEffort;
   mode: 'custom' | 'openai';
   language: SupportedLanguage;
   autoPush: boolean;
@@ -20,6 +23,7 @@ interface StoredConfig {
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
+  reasoningEffort?: ReasoningEffort | string;
   mode?: 'custom' | 'openai';
   language?: SupportedLanguage | string;
   autoPush?: boolean;
@@ -70,6 +74,15 @@ export class ConfigService {
     return normalized === 'en' ? 'en' : 'ko';
   }
 
+  private static normalizeReasoningEffort(effort?: string): ReasoningEffort | undefined {
+    if (!effort) return undefined;
+    const normalized = effort.toLowerCase();
+    if (['minimal', 'low', 'medium', 'high'].includes(normalized)) {
+      return normalized as ReasoningEffort;
+    }
+    return undefined;
+  }
+
   private static normalizeMode(mode?: string): 'custom' | 'openai' {
     if (!mode) {
       return DEFAULT_MODE;
@@ -114,6 +127,7 @@ export class ConfigService {
     const baseURL = fileConfig.baseURL ?? envConfig.baseURL;
     const model = fileConfig.model ?? envConfig.model ?? DEFAULT_MODEL;
     const fallbackModel = fileConfig.fallbackModel;
+    const reasoningEffort = this.normalizeReasoningEffort(fileConfig.reasoningEffort);
     const language = this.normalizeLanguage(fileConfig.language ?? envConfig.language);
     const autoPush = typeof fileConfig.autoPush === 'boolean' ? fileConfig.autoPush : envConfig.autoPush;
 
@@ -122,6 +136,7 @@ export class ConfigService {
       baseURL,
       model,
       fallbackModel,
+      reasoningEffort,
       mode,
       language,
       autoPush

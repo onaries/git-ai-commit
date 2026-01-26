@@ -9,6 +9,7 @@ export interface ConfigOptions {
   baseUrl?: string;
   model?: string;
   fallbackModel?: string;
+  reasoningEffort?: string;
   mode?: 'custom' | 'openai';
 }
 
@@ -26,6 +27,7 @@ export class ConfigCommand {
       .option('-b, --base-url <url>', 'Persist API base URL (overrides environment variables)')
       .option('-m, --model <model>', 'Persist default AI model')
       .option('--fallback-model <model>', 'Persist fallback model for rate limit (429) retry')
+      .option('--reasoning-effort <level>', 'Thinking effort for reasoning models (minimal | low | medium | high)')
       .option('--mode <mode>', 'Persist AI mode (custom | openai)')
       .action(this.handleConfig.bind(this));
   }
@@ -65,6 +67,7 @@ export class ConfigCommand {
       baseURL?: string;
       model?: string;
       fallbackModel?: string;
+      reasoningEffort?: string;
       mode?: 'custom' | 'openai';
       language?: SupportedLanguage;
       autoPush?: boolean;
@@ -92,6 +95,15 @@ export class ConfigCommand {
 
     if (options.fallbackModel !== undefined) {
       updates.fallbackModel = this.sanitizeStringValue(options.fallbackModel);
+    }
+
+    if (options.reasoningEffort !== undefined) {
+      const effort = options.reasoningEffort.toLowerCase();
+      if (!['minimal', 'low', 'medium', 'high'].includes(effort)) {
+        console.error('Reasoning effort must be one of: minimal, low, medium, high');
+        process.exit(1);
+      }
+      updates.reasoningEffort = effort;
     }
 
     if (options.mode) {
@@ -134,6 +146,7 @@ export class ConfigCommand {
         console.log(`Base URL: ${config.baseURL || 'Not set (using provider default)'}`);
         console.log(`Model: ${config.model || 'zai-org/GLM-4.5-FP8 (default)'}`);
         console.log(`Fallback Model: ${config.fallbackModel || 'Not set'}`);
+        console.log(`Reasoning Effort: ${config.reasoningEffort || 'Not set (model default)'}`);
         console.log(`Mode: ${config.mode || 'custom (default)'}`);
       } catch (error) {
         console.error('Error reading configuration:', error instanceof Error ? error.message : error);
