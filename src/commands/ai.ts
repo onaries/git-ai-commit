@@ -137,50 +137,103 @@ export class AIService {
 
   private readonly spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
-  private writeProgress(tokenCount: number, frameIndex: number): void {
-    const frame = this.spinnerFrames[frameIndex % this.spinnerFrames.length];
-    process.stderr.write(`\r${frame} Streaming response... (${tokenCount} tokens)`);
-  }
-
-  private clearProgress(): void {
-    process.stderr.write('\r\x1b[K');
+  private formatElapsed(ms: number): string {
+    const seconds = Math.floor(ms / 1000);
+    if (seconds < 1) return '0s';
+    return `${seconds}s`;
   }
 
   private async createStreamingCompletion(
     request: ChatCompletionCreateParamsNonStreaming,
     attempt = 0
   ): Promise<string> {
+    let waitingTimer: ReturnType<typeof setInterval> | null = null;
+
     try {
+      const startTime = Date.now();
+      let frameIndex = 0;
+
+      if (this.verbose) {
+        waitingTimer = setInterval(() => {
+          const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
+          const elapsed = this.formatElapsed(Date.now() - startTime);
+          process.stdout.write(`\r${frame} Waiting for response... (${elapsed})`);
+        }, 100);
+      }
+
       const stream = await this.openai.chat.completions.create({
         ...request,
         stream: true
       });
 
-      const chunks: string[] = [];
-      let tokenCount = 0;
-      let frameIndex = 0;
-      const showProgress = this.verbose && process.stderr.isTTY;
+      const contentChunks: string[] = [];
+      let reasoningTokens = 0;
+      let contentTokens = 0;
+      let phase: 'waiting' | 'thinking' | 'content' = 'waiting';
 
       for await (const chunk of stream) {
-        const delta = chunk.choices[0]?.delta?.content;
-        if (delta) {
-          chunks.push(delta);
-          tokenCount++;
-          if (showProgress) {
-            this.writeProgress(tokenCount, frameIndex++);
+        const delta = chunk.choices[0]?.delta;
+        const content = delta?.content;
+        const reasoning = (delta as Record<string, unknown>)?.reasoning_content as string | undefined;
+
+        if (reasoning) {
+          reasoningTokens++;
+
+          if (phase === 'waiting' && waitingTimer) {
+            clearInterval(waitingTimer);
+            waitingTimer = null;
+            phase = 'thinking';
+          }
+
+          if (this.verbose && phase === 'thinking') {
+            const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
+            const elapsed = this.formatElapsed(Date.now() - startTime);
+            process.stdout.write(`\r${frame} Thinking... (${reasoningTokens} tokens, ${elapsed})`);
+          }
+        }
+
+        if (content) {
+          contentChunks.push(content);
+          contentTokens++;
+
+          if (phase !== 'content') {
+            if (waitingTimer) {
+              clearInterval(waitingTimer);
+              waitingTimer = null;
+            }
+            phase = 'content';
+          }
+
+          if (this.verbose) {
+            const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
+            const elapsed = this.formatElapsed(Date.now() - startTime);
+            process.stdout.write(`\r${frame} Streaming response... (${contentTokens} tokens, ${elapsed})`);
           }
         }
       }
 
-      if (showProgress) {
-        this.clearProgress();
-        this.debugLog(`Streaming complete (${tokenCount} tokens)`);
+      if (waitingTimer) {
+        clearInterval(waitingTimer);
+        waitingTimer = null;
       }
 
-      return chunks.join('');
+      if (this.verbose) {
+        const totalTokens = reasoningTokens + contentTokens;
+        const elapsed = this.formatElapsed(Date.now() - startTime);
+        const detail = reasoningTokens > 0
+          ? `${totalTokens} tokens (thinking: ${reasoningTokens}, response: ${contentTokens}), ${elapsed}`
+          : `${contentTokens} tokens, ${elapsed}`;
+        process.stdout.write(`\r✅ Complete (${detail})\n`);
+      }
+
+      return contentChunks.join('');
     } catch (error) {
-      if (this.verbose && process.stderr.isTTY) {
-        this.clearProgress();
+      if (waitingTimer) {
+        clearInterval(waitingTimer);
+        waitingTimer = null;
+      }
+      if (this.verbose) {
+        process.stdout.write('\n');
       }
 
       if (attempt < 3 && this.isUnsupportedValueError(error, 'temperature')) {
