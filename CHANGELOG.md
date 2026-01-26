@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.1.7 - 2026-01-26
+
+### New Features
+- Support reasoning models (glm-4.7 등) with separate thinking/response phase display
+- Add `--fallback-model` config for automatic retry on 429 rate limit
+- Add `--reasoning-effort` config to control thinking token usage (minimal | low | medium | high)
+- Show elapsed time during streaming (`⠹ Thinking... (324 tokens, 12s)`)
+- Show waiting spinner while API processes request before first token arrives
+
+### Improvements
+- Capture `reasoning_content` from streaming chunks for thinking-model compatibility
+- Display phase-aware progress: Waiting → Thinking → Streaming → Complete
+- Show detailed token breakdown on completion (`thinking: 324, response: 5`)
+
 ## 1.1.6 - 2026-01-26
 
 ### New Features
