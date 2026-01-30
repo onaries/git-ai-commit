@@ -178,23 +178,41 @@ export class AIService {
       const streamParams = {
         ...request,
         stream: true as const,
+        stream_options: { include_usage: true },
         ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {})
       };
 
       const stream = await this.openai.chat.completions.create(streamParams);
 
       const contentChunks: string[] = [];
-      let reasoningTokens = 0;
-      let contentTokens = 0;
+      let reasoningChunks = 0;
+      let contentChunksCount = 0;
       let phase: 'waiting' | 'thinking' | 'content' = 'waiting';
+      
+      interface StreamUsage {
+        prompt_tokens?: number;
+        completion_tokens?: number;
+        total_tokens?: number;
+        completion_tokens_details?: {
+          reasoning_tokens?: number;
+        };
+      }
+      let finalUsage: StreamUsage | null = null;
 
       for await (const chunk of stream) {
+        const chunkUsage = (chunk as unknown as { usage?: StreamUsage }).usage;
+        if (chunkUsage) {
+          finalUsage = chunkUsage;
+        }
+
         const delta = chunk.choices[0]?.delta;
+        if (!delta) continue;
+        
         const content = delta?.content;
         const reasoning = (delta as Record<string, unknown>)?.reasoning_content as string | undefined;
 
         if (reasoning) {
-          reasoningTokens++;
+          reasoningChunks++;
 
           if (phase === 'waiting' && waitingTimer) {
             clearInterval(waitingTimer);
@@ -205,13 +223,13 @@ export class AIService {
           if (this.verbose && phase === 'thinking') {
             const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
             const elapsed = this.formatElapsed(Date.now() - startTime);
-            process.stdout.write(`\r${frame} Thinking... (${reasoningTokens} tokens, ${elapsed})`);
+            process.stdout.write(`\r${frame} Thinking... (${reasoningChunks} chunks, ${elapsed})`);
           }
         }
 
         if (content) {
           contentChunks.push(content);
-          contentTokens++;
+          contentChunksCount++;
 
           if (phase !== 'content') {
             if (waitingTimer) {
@@ -224,7 +242,7 @@ export class AIService {
           if (this.verbose) {
             const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
             const elapsed = this.formatElapsed(Date.now() - startTime);
-            process.stdout.write(`\r${frame} Streaming response... (${contentTokens} tokens, ${elapsed})`);
+            process.stdout.write(`\r${frame} Streaming... (${contentChunksCount} chunks, ${elapsed})`);
           }
         }
       }
@@ -235,12 +253,30 @@ export class AIService {
       }
 
       if (this.verbose) {
-        const totalTokens = reasoningTokens + contentTokens;
         const elapsed = this.formatElapsed(Date.now() - startTime);
-        const detail = reasoningTokens > 0
-          ? `${totalTokens} tokens (thinking: ${reasoningTokens}, response: ${contentTokens}), ${elapsed}`
-          : `${contentTokens} tokens, ${elapsed}`;
-        process.stdout.write(`\r✅ Complete (${detail})\n`);
+        
+        if (finalUsage) {
+          const reasoningTokens = finalUsage.completion_tokens_details?.reasoning_tokens ?? 0;
+          const completionTokens = finalUsage.completion_tokens ?? 0;
+          const promptTokens = finalUsage.prompt_tokens ?? 0;
+          
+          // Gemini: completion_tokens is response-only (separate from reasoning)
+          // OpenAI: completion_tokens includes reasoning
+          const responseTokens = reasoningTokens > 0 && completionTokens > reasoningTokens
+            ? completionTokens - reasoningTokens
+            : completionTokens;
+          
+          if (reasoningTokens > 0) {
+            process.stdout.write(`\r✅ Complete (thinking: ${reasoningTokens}, response: ${responseTokens}, prompt: ${promptTokens} tokens, ${elapsed})\n`);
+          } else {
+            process.stdout.write(`\r✅ Complete (response: ${completionTokens}, prompt: ${promptTokens} tokens, ${elapsed})\n`);
+          }
+        } else {
+          const detail = reasoningChunks > 0
+            ? `~${reasoningChunks + contentChunksCount} chunks (thinking: ~${reasoningChunks}, response: ~${contentChunksCount}), ${elapsed}`
+            : `~${contentChunksCount} chunks, ${elapsed}`;
+          process.stdout.write(`\r✅ Complete (${detail})\n`);
+        }
       }
 
       return contentChunks.join('');
