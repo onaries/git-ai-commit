@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.8 - 2026-01-30
+
+### Improvements
+- Auto force push when normal tag push fails (no user confirmation required)
+
 ## 1.1.7 - 2026-01-26
 
 ### New Features
