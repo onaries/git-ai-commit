@@ -84,6 +84,7 @@ describe('Pre-commit Hook Tests', () => {
 
   it('should run pre-commit hooks if .pre-commit-config.yaml is present', async () => {
     mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
+    jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(true);
 
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
 
@@ -114,6 +115,7 @@ describe('Pre-commit Hook Tests', () => {
 
   it('should fail commit if pre-commit hooks fail', async () => {
     mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
+    jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(true);
 
     mockSpawn.mockImplementation(() => {
       const child = new EventEmitter();
@@ -134,6 +136,7 @@ describe('Pre-commit Hook Tests', () => {
     mockFsRead.mockReturnValue(JSON.stringify({
       scripts: { 'pre-commit': 'test' }
     }));
+    jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(true);
 
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
 
@@ -142,6 +145,22 @@ describe('Pre-commit Hook Tests', () => {
     expect(mockSpawn).toHaveBeenCalledTimes(2);
     expect(mockSpawn).toHaveBeenCalledWith('npm', ['run', 'pre-commit'], expect.anything());
     expect(mockSpawn).toHaveBeenCalledWith('pre-commit', ['run'], expect.anything());
+  });
+
+  it('should skip pre-commit hooks when pre-commit is not installed', async () => {
+    mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
+    jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(false);
+
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({});
+
+    expect(mockSpawn).not.toHaveBeenCalledWith('pre-commit', ['run'], expect.anything());
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("'pre-commit' is not installed")
+    );
+    warnSpy.mockRestore();
   });
 
   it('should skip npm pre-commit script when --no-verify is used', async () => {

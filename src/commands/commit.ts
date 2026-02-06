@@ -2,7 +2,7 @@ import { Command } from "commander";
 import readline from "readline";
 import fs from "fs";
 import path from "path";
-import { spawn } from "child_process";
+import { spawn, execFileSync } from "child_process";
 import { GitService, GitDiffResult } from "./git";
 import { AIService, AIServiceConfig } from "./ai";
 import { ConfigService } from "./config";
@@ -44,6 +44,16 @@ export class CommitCommand {
         "Skip pre-commit hooks"
       )
       .action(this.handleCommit.bind(this));
+  }
+
+  private isCommandAvailable(command: string): boolean {
+    const checker = process.platform === "win32" ? "where" : "which";
+    try {
+      execFileSync(checker, [command], { stdio: "ignore" });
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   private async runPreCommitHook(): Promise<void> {
@@ -88,43 +98,33 @@ export class CommitCommand {
     // 2. Check for .pre-commit-config.yaml (Python/General pre-commit)
     const preCommitConfigPath = path.resolve(process.cwd(), ".pre-commit-config.yaml");
     if (fs.existsSync(preCommitConfigPath)) {
-      console.log("Found .pre-commit-config.yaml, running pre-commit hooks...");
-      
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const child = spawn("pre-commit", ["run"], {
-            stdio: "inherit",
-            shell: true,
-          });
-
-          child.on("close", (code) => {
-            if (code === 0) {
-              console.log("✅ pre-commit hooks passed");
-              resolve();
-            } else {
-              console.error(`❌ pre-commit hooks failed with code ${code}`);
-              reject(new Error(`pre-commit hooks failed with code ${code}`));
-            }
-          });
-
-          child.on("error", (err) => {
-            // If pre-commit is not installed/found, we might want to warn instead of fail?
-            // But usually 'error' event on spawn (with shell:true) is rare for command not found (it usually exits with 127).
-            // However, if it fails to spawn, we reject.
-            reject(err);
-          });
-        });
-      } catch (error) {
-        // If the error suggests command not found, we might warn.
-        // But since we use shell:true, 'command not found' usually results in exit code 127, which goes to 'close' event.
-        // So we catch the error from the promise rejection above.
-        const msg = error instanceof Error ? error.message : String(error);
-        if (msg.includes("code 127") || msg.includes("ENOENT")) {
-           console.warn("⚠️ 'pre-commit' command not found, skipping hooks despite configuration file presence.");
-           return;
-        }
-        throw error;
+      if (!this.isCommandAvailable("pre-commit")) {
+        console.warn("⚠️ .pre-commit-config.yaml found but 'pre-commit' is not installed. Skipping hooks.");
+        return;
       }
+
+      console.log("Found .pre-commit-config.yaml, running pre-commit hooks...");
+
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn("pre-commit", ["run"], {
+          stdio: "inherit",
+          shell: true,
+        });
+
+        child.on("close", (code) => {
+          if (code === 0) {
+            console.log("✅ pre-commit hooks passed");
+            resolve();
+          } else {
+            console.error(`❌ pre-commit hooks failed with code ${code}`);
+            reject(new Error(`pre-commit hooks failed with code ${code}`));
+          }
+        });
+
+        child.on("error", (err) => {
+          reject(err);
+        });
+      });
     }
   }
 
