@@ -108,6 +108,7 @@ git-ai-commit config -k sk-...           # store API key securely on disk
 git-ai-commit config -b https://api.test # set a custom API base URL
 git-ai-commit config --model gpt-4o-mini # set preferred model
 git-ai-commit config --mode openai       # prefer OPENAI_* environment variables
+git-ai-commit config --mode gemini       # use Google Gemini native SDK
 ```
 
 The stored configuration works alongside environment variables—CLI flags override config values, which in turn override `.env` settings.
@@ -115,12 +116,14 @@ The stored configuration works alongside environment variables—CLI flags overr
 Configuration is written to `~/.git-ai-commit/config.json` by default. Set `GIT_AI_COMMIT_CONFIG_PATH=/custom/path.json` to use a different location.
 
 ## Environment Variables
-
 Set the following variables (e.g., in a local `.env` file) before using the CLI:
 
-- `AI_MODE` controls which provider defaults to: `openai` prioritises `OPENAI_*` vars; any other value (or unset) uses the `AI_*` vars first and falls back to `OPENAI_*`.
-- Credentials: `AI_API_KEY` or `OPENAI_API_KEY`.
-- Base URLs: `AI_BASE_URL` or `OPENAI_BASE_URL` (priority matches the selected mode).
+- `AI_MODE` controls which provider to use:
+  - `custom` (default): uses `AI_*` vars first, falls back to `OPENAI_*`. Requests go through the OpenAI-compatible API.
+  - `openai`: prioritises `OPENAI_*` vars. Requests go through the OpenAI-compatible API.
+  - `gemini`: uses the Google Gemini native SDK (`@google/genai`) directly. Reads `GEMINI_API_KEY` (or `AI_API_KEY`). Default model: `gemini-2.0-flash`.
+- Credentials: `AI_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` (priority depends on the selected mode).
+- Base URLs: `AI_BASE_URL` or `OPENAI_BASE_URL` (not used in `gemini` mode).
 - Models: `AI_MODEL` or `OPENAI_MODEL` (priority matches the selected mode).
 
 ## Development Commands

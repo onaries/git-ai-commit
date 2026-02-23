@@ -71,7 +71,7 @@ _git_ai_commit() {
                     return
                     ;;
                 --mode)
-                    COMPREPLY=( \$(compgen -W "custom openai" -- "\${cur}") )
+                    COMPREPLY=( \$(compgen -W "custom openai gemini" -- "\${cur}") )
                     return
                     ;;
                 -k|--api-key|-b|--base-url|-m|--model)
@@ -190,7 +190,7 @@ _git-ai-commit() {
                         '--base-url[Persist API base URL]:url:' \\
                         '-m[Persist default AI model]:model:' \\
                         '--model[Persist default AI model]:model:' \\
-                        '--mode[Persist AI mode]:mode:(custom openai)'
+                        '--mode[Persist AI mode]:mode:(custom openai gemini)'
                     ;;
                 pr)
                     _arguments \\
