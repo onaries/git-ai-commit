@@ -43,9 +43,12 @@ describe('ConfigService', () => {
         apiKey: 'test-api-key',
         baseURL: 'https://api.test.com',
         model: 'gpt-4',
+        fallbackModel: undefined,
+        reasoningEffort: undefined,
         mode: 'custom',
         language: 'ko',
-        autoPush: false
+        autoPush: false,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
     });
 
@@ -60,9 +63,12 @@ describe('ConfigService', () => {
         apiKey: 'fallback-api-key',
         baseURL: 'https://fallback.test.com',
         model: 'claude-3',
+        fallbackModel: undefined,
+        reasoningEffort: undefined,
         mode: 'custom',
         language: 'ko',
-        autoPush: false
+        autoPush: false,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
     });
 
@@ -78,9 +84,12 @@ describe('ConfigService', () => {
         apiKey: 'ai-key',
         baseURL: 'ai-url',
         model: 'zai-org/GLM-4.5-FP8',
+        fallbackModel: undefined,
+        reasoningEffort: undefined,
         mode: 'custom',
         language: 'ko',
-        autoPush: false
+        autoPush: false,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
     });
 
@@ -99,9 +108,12 @@ describe('ConfigService', () => {
         apiKey: 'openai-key',
         baseURL: 'openai-url',
         model: 'gpt-4',
+        fallbackModel: undefined,
+        reasoningEffort: undefined,
         mode: 'openai',
         language: 'ko',
-        autoPush: false
+        autoPush: false,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
     });
 
@@ -117,9 +129,12 @@ describe('ConfigService', () => {
         apiKey: 'ai-key',
         baseURL: 'ai-url',
         model: 'claude-3',
+        fallbackModel: undefined,
+        reasoningEffort: undefined,
         mode: 'openai',
         language: 'ko',
-        autoPush: false
+        autoPush: false,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
     });
 
@@ -154,9 +169,12 @@ describe('ConfigService', () => {
         apiKey: 'file-key',
         baseURL: 'https://file.example',
         model: 'file-model',
+        fallbackModel: undefined,
+        reasoningEffort: undefined,
         mode: 'openai',
         language: 'en',
-        autoPush: true
+        autoPush: true,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
     });
 

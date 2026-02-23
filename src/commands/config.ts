@@ -18,6 +18,7 @@ export interface EnvironmentConfig {
   mode: AIMode;
   language: SupportedLanguage;
   autoPush: boolean;
+  coAuthor?: string | false;
 }
 
 interface StoredConfig {
@@ -29,12 +30,15 @@ interface StoredConfig {
   mode?: AIMode;
   language?: SupportedLanguage | string;
   autoPush?: boolean;
+  coAuthor?: string | false;
 }
 
 const DEFAULT_MODEL = 'zai-org/GLM-4.5-FP8';
 const DEFAULT_MODE: AIMode = 'custom';
 const DEFAULT_LANGUAGE: SupportedLanguage = 'ko';
 const DEFAULT_AUTO_PUSH = false;
+const DEFAULT_CO_AUTHOR = 'git-ai-commit <git-ai-commit@users.noreply.github.com>';
+const CONFIG_SCHEMA_URL = 'https://raw.githubusercontent.com/onaries/git-ai-commit/main/src/schema/config.schema.json';
 
 export class ConfigService {
   private static getConfigFilePath(): string {
@@ -60,7 +64,8 @@ export class ConfigService {
       }
 
       const parsed = JSON.parse(raw);
-      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+      const { $schema, ...config } = typeof parsed === 'object' && parsed !== null ? parsed : {} as Record<string, unknown>;
+      return config as StoredConfig;
     } catch (error) {
       console.warn('Warning: Failed to read configuration file. Falling back to environment variables.');
       return {};
@@ -139,7 +144,7 @@ export class ConfigService {
     const reasoningEffort = this.normalizeReasoningEffort(fileConfig.reasoningEffort);
     const language = this.normalizeLanguage(fileConfig.language ?? envConfig.language);
     const autoPush = typeof fileConfig.autoPush === 'boolean' ? fileConfig.autoPush : envConfig.autoPush;
-
+    const coAuthor = fileConfig.coAuthor === false ? false : (fileConfig.coAuthor || DEFAULT_CO_AUTHOR);
     return {
       apiKey,
       baseURL,
@@ -148,7 +153,8 @@ export class ConfigService {
       reasoningEffort,
       mode,
       language,
-      autoPush
+      autoPush,
+      coAuthor,
     };
   }
 
@@ -185,6 +191,8 @@ export class ConfigService {
       delete next.mode;
     }
 
+    // coAuthor: false means explicitly disabled — persist it so getConfig() sees it
+
     const sanitized = Object.entries(next).reduce<StoredConfig>((acc, [key, value]) => {
       if (value !== undefined) {
         acc[key as keyof StoredConfig] = value as any;
@@ -195,7 +203,7 @@ export class ConfigService {
     }, {});
 
     await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
-    await fsPromises.writeFile(filePath, JSON.stringify(sanitized, null, 2), 'utf-8');
+    await fsPromises.writeFile(filePath, JSON.stringify({ $schema: CONFIG_SCHEMA_URL, ...sanitized }, null, 2), 'utf-8');
   }
 
   static validateConfig(config: { apiKey?: string; language?: string }): void {

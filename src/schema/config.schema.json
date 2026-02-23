@@ -1,0 +1,72 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/onaries/git-ai-commit/main/src/schema/config.schema.json",
+  "title": "git-ai-commit configuration",
+  "description": "Configuration file for git-ai-commit CLI (~/.git-ai-commit/config.json)",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema reference for editor support"
+    },
+    "apiKey": {
+      "type": "string",
+      "description": "API key for AI requests. Overrides AI_API_KEY / OPENAI_API_KEY environment variables."
+    },
+    "baseURL": {
+      "type": "string",
+      "format": "uri",
+      "description": "Custom API base URL. Overrides AI_BASE_URL / OPENAI_BASE_URL environment variables. Not used in gemini mode."
+    },
+    "model": {
+      "type": "string",
+      "description": "AI model to use for generation.",
+      "default": "zai-org/GLM-4.5-FP8",
+      "examples": ["gpt-4o-mini", "gpt-4", "gemini-2.0-flash", "claude-3-haiku"]
+    },
+    "fallbackModel": {
+      "type": "string",
+      "description": "Fallback model used when the primary model returns a 429 (rate limit) error.",
+      "examples": ["glm-4-flash", "gpt-4o-mini"]
+    },
+    "reasoningEffort": {
+      "type": "string",
+      "enum": ["minimal", "low", "medium", "high"],
+      "description": "Thinking effort level for reasoning models."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["custom", "openai", "gemini"],
+      "default": "custom",
+      "description": "AI provider mode. 'custom' uses AI_* vars first, 'openai' prefers OPENAI_* vars, 'gemini' uses Google Gemini native SDK."
+    },
+    "language": {
+      "type": "string",
+      "enum": ["ko", "en"],
+      "default": "ko",
+      "description": "Default language for AI-generated output."
+    },
+    "autoPush": {
+      "type": "boolean",
+      "default": false,
+      "description": "Automatically push to remote after a successful commit."
+    },
+    "coAuthor": {
+      "oneOf": [
+        {
+          "type": "string",
+          "pattern": ".+<.+@.+>",
+          "description": "Co-authored-by trailer value in 'Name <email>' format."
+        },
+        {
+          "type": "boolean",
+          "const": false,
+          "description": "Set to false to disable the default Co-authored-by trailer."
+        }
+      ],
+      "default": "git-ai-commit <git-ai-commit@users.noreply.github.com>",
+      "description": "Co-authored-by trailer appended to AI-generated commit messages. Defaults to 'git-ai-commit <git-ai-commit@users.noreply.github.com>'. Set to false to disable."
+    }
+  },
+  "additionalProperties": false
+}

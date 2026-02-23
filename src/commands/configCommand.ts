@@ -11,6 +11,8 @@ export interface ConfigOptions {
   fallbackModel?: string;
   reasoningEffort?: string;
   mode?: AIMode;
+  coAuthor?: string;
+  noCoAuthor?: boolean;
 }
 
 export class ConfigCommand {
@@ -29,6 +31,8 @@ export class ConfigCommand {
       .option('--fallback-model <model>', 'Persist fallback model for rate limit (429) retry')
       .option('--reasoning-effort <level>', 'Thinking effort for reasoning models (minimal | low | medium | high)')
       .option('--mode <mode>', 'Persist AI mode (custom | openai | gemini)')
+      .option('--co-author <value>', 'Set co-author for commits (e.g. "Name <email>")')
+      .option('--no-co-author', 'Disable co-author')
       .action(this.handleConfig.bind(this));
   }
 
@@ -71,6 +75,7 @@ export class ConfigCommand {
       mode?: AIMode;
       language?: SupportedLanguage;
       autoPush?: boolean;
+      coAuthor?: string | false;
     } = {};
 
     if (options.language) {
@@ -110,6 +115,17 @@ export class ConfigCommand {
       updates.mode = this.validateMode(options.mode);
     }
 
+
+    if (options.noCoAuthor) {
+      updates.coAuthor = false;
+    } else if (options.coAuthor !== undefined) {
+      const coAuthor = this.sanitizeStringValue(options.coAuthor);
+      if (coAuthor && !/.+<.+@.+>/.test(coAuthor)) {
+        console.error('Co-author must be in "Name <email>" format.');
+        process.exit(1);
+      }
+      updates.coAuthor = coAuthor;
+    }
     const hasUpdates = Object.keys(updates).length > 0;
 
     if (!options.show && !hasUpdates) {
@@ -123,6 +139,7 @@ export class ConfigCommand {
       console.log('  git-ai-commit config --mode gemini          # Use Gemini native SDK (GEMINI_API_KEY)');
       console.log('  git-ai-commit config --model gpt-4o-mini    # Persist preferred AI model');
       console.log('  git-ai-commit config --fallback-model glm-4-flash  # Fallback model for 429 retry');
+      console.log('  git-ai-commit config --co-author "Name <email>"  # Set co-author for commits');
       return;
     }
 
@@ -149,6 +166,7 @@ export class ConfigCommand {
         console.log(`Fallback Model: ${config.fallbackModel || 'Not set'}`);
         console.log(`Reasoning Effort: ${config.reasoningEffort || 'Not set (model default)'}`);
         console.log(`Mode: ${config.mode || 'custom (default)'}`);
+        console.log(`Co-author: ${config.coAuthor === false ? 'disabled' : config.coAuthor}`);
       } catch (error) {
         console.error('Error reading configuration:', error instanceof Error ? error.message : error);
         process.exit(1);

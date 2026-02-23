@@ -109,6 +109,8 @@ git-ai-commit config -b https://api.test # set a custom API base URL
 git-ai-commit config --model gpt-4o-mini # set preferred model
 git-ai-commit config --mode openai       # prefer OPENAI_* environment variables
 git-ai-commit config --mode gemini       # use Google Gemini native SDK
+git-ai-commit config --co-author "Name <email>"  # add Co-authored-by trailer to commits
+git-ai-commit config --no-co-author      # remove Co-authored-by trailer
 ```
 
 The stored configuration works alongside environment variables—CLI flags override config values, which in turn override `.env` settings.

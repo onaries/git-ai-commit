@@ -211,6 +211,10 @@ export class CommitCommand {
         process.exit(1);
       }
 
+
+      if (existingConfig.coAuthor) {
+        aiResult.message = `${aiResult.message}\n\nCo-authored-by: ${existingConfig.coAuthor}`;
+      }
       if (messageOnly) {
         console.log(aiResult.message);
         await LogService.append({
