@@ -7,13 +7,15 @@ export type SupportedLanguage = 'ko' | 'en';
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
+export type AIMode = 'custom' | 'openai' | 'gemini';
+
 export interface EnvironmentConfig {
   apiKey?: string;
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
   reasoningEffort?: ReasoningEffort;
-  mode: 'custom' | 'openai';
+  mode: AIMode;
   language: SupportedLanguage;
   autoPush: boolean;
 }
@@ -24,13 +26,13 @@ interface StoredConfig {
   model?: string;
   fallbackModel?: string;
   reasoningEffort?: ReasoningEffort | string;
-  mode?: 'custom' | 'openai';
+  mode?: AIMode;
   language?: SupportedLanguage | string;
   autoPush?: boolean;
 }
 
 const DEFAULT_MODEL = 'zai-org/GLM-4.5-FP8';
-const DEFAULT_MODE: 'custom' | 'openai' = 'custom';
+const DEFAULT_MODE: AIMode = 'custom';
 const DEFAULT_LANGUAGE: SupportedLanguage = 'ko';
 const DEFAULT_AUTO_PUSH = false;
 
@@ -83,35 +85,42 @@ export class ConfigService {
     return undefined;
   }
 
-  private static normalizeMode(mode?: string): 'custom' | 'openai' {
+  private static normalizeMode(mode?: string): AIMode {
     if (!mode) {
       return DEFAULT_MODE;
     }
 
     const normalized = mode.toLowerCase();
-    return normalized === 'openai' ? 'openai' : 'custom';
+    if (normalized === 'openai') return 'openai';
+    if (normalized === 'gemini') return 'gemini';
+    return 'custom';
   }
 
-  private static resolveEnvConfig(modeOverride?: 'custom' | 'openai'): EnvironmentConfig {
+  private static resolveEnvConfig(modeOverride?: AIMode): EnvironmentConfig {
     const resolvedMode = this.normalizeMode(modeOverride || process.env.AI_MODE);
-    const isOpenAI = resolvedMode === 'openai';
 
-    const apiKey = isOpenAI
-      ? process.env.OPENAI_API_KEY || process.env.AI_API_KEY
-      : process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+    let apiKey: string | undefined;
+    let baseURL: string | undefined;
+    let model: string;
 
-    const baseURL = isOpenAI
-      ? process.env.OPENAI_BASE_URL || process.env.AI_BASE_URL
-      : process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL;
-
-    const model = isOpenAI
-      ? process.env.OPENAI_MODEL || process.env.AI_MODEL || DEFAULT_MODEL
-      : process.env.AI_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL;
+    if (resolvedMode === 'gemini') {
+      apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
+      baseURL = undefined;
+      model = process.env.AI_MODEL || 'gemini-2.0-flash';
+    } else if (resolvedMode === 'openai') {
+      apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
+      baseURL = process.env.OPENAI_BASE_URL || process.env.AI_BASE_URL;
+      model = process.env.OPENAI_MODEL || process.env.AI_MODEL || DEFAULT_MODEL;
+    } else {
+      apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
+      baseURL = process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL;
+      model = process.env.AI_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL;
+    }
 
     return {
       apiKey: apiKey || undefined,
       baseURL: baseURL || undefined,
-      model: model || DEFAULT_MODEL,
+      model,
       mode: resolvedMode,
       language: DEFAULT_LANGUAGE,
       autoPush: DEFAULT_AUTO_PUSH

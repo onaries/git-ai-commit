@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { ConfigService, SupportedLanguage } from './config';
+import { ConfigService, SupportedLanguage, AIMode } from './config';
 
 export interface ConfigOptions {
   show?: boolean;
@@ -10,7 +10,7 @@ export interface ConfigOptions {
   model?: string;
   fallbackModel?: string;
   reasoningEffort?: string;
-  mode?: 'custom' | 'openai';
+  mode?: AIMode;
 }
 
 export class ConfigCommand {
@@ -28,7 +28,7 @@ export class ConfigCommand {
       .option('-m, --model <model>', 'Persist default AI model')
       .option('--fallback-model <model>', 'Persist fallback model for rate limit (429) retry')
       .option('--reasoning-effort <level>', 'Thinking effort for reasoning models (minimal | low | medium | high)')
-      .option('--mode <mode>', 'Persist AI mode (custom | openai)')
+      .option('--mode <mode>', 'Persist AI mode (custom | openai | gemini)')
       .action(this.handleConfig.bind(this));
   }
 
@@ -42,14 +42,14 @@ export class ConfigCommand {
     return normalized;
   }
 
-  private validateMode(mode: string): 'custom' | 'openai' {
+  private validateMode(mode: string): AIMode {
     const normalized = mode?.toLowerCase();
-    if (normalized !== 'custom' && normalized !== 'openai') {
-      console.error('Mode must be either "custom" or "openai".');
+    if (normalized !== 'custom' && normalized !== 'openai' && normalized !== 'gemini') {
+      console.error('Mode must be one of: "custom", "openai", "gemini".');
       process.exit(1);
     }
 
-    return normalized;
+    return normalized as AIMode;
   }
 
   private sanitizeStringValue(value?: string): string | undefined {
@@ -68,7 +68,7 @@ export class ConfigCommand {
       model?: string;
       fallbackModel?: string;
       reasoningEffort?: string;
-      mode?: 'custom' | 'openai';
+      mode?: AIMode;
       language?: SupportedLanguage;
       autoPush?: boolean;
     } = {};
@@ -120,6 +120,7 @@ export class ConfigCommand {
       console.log('  git-ai-commit config -k sk-xxx              # Persist API key securely on disk');
       console.log('  git-ai-commit config -b https://api.test    # Persist custom API base URL');
       console.log('  git-ai-commit config --mode openai          # Use OpenAI-compatible environment defaults');
+      console.log('  git-ai-commit config --mode gemini          # Use Gemini native SDK (GEMINI_API_KEY)');
       console.log('  git-ai-commit config --model gpt-4o-mini    # Persist preferred AI model');
       console.log('  git-ai-commit config --fallback-model glm-4-flash  # Fallback model for 429 retry');
       return;

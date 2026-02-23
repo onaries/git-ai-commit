@@ -64,7 +64,8 @@ export class PullRequestCommand {
         fallbackModel: existingConfig.fallbackModel,
         reasoningEffort: existingConfig.reasoningEffort,
         language: existingConfig.language,
-        verbose: false
+        verbose: false,
+        mode: existingConfig.mode,
       });
 
       const aiResult = await aiService.generatePullRequestMessage(

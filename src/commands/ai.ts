@@ -1,9 +1,10 @@
 import OpenAI from 'openai';
 import { type ChatCompletionCreateParamsNonStreaming } from 'openai/resources/chat/completions';
+import { GoogleGenAI } from '@google/genai';
 import { generateCommitPrompt } from '../prompts/commit';
 import { generateTagPrompt } from '../prompts/tag';
 import { generatePullRequestPrompt } from '../prompts/pr';
-import { SupportedLanguage } from './config';
+import { SupportedLanguage, AIMode } from './config';
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
@@ -15,6 +16,7 @@ export interface AIServiceConfig {
   reasoningEffort?: ReasoningEffort;
   language?: SupportedLanguage;
   verbose?: boolean;
+  mode?: AIMode;
 }
 
 export interface CommitGenerationResult {
@@ -36,7 +38,9 @@ export interface PullRequestGenerationResult {
 }
 
 export class AIService {
-  private openai: OpenAI;
+  private openai: OpenAI | null = null;
+  private gemini: GoogleGenAI | null = null;
+  private mode: AIMode;
   private model: string;
   private fallbackModel?: string;
   private reasoningEffort?: ReasoningEffort;
@@ -44,11 +48,19 @@ export class AIService {
   private verbose: boolean;
 
   constructor(config: AIServiceConfig) {
-    this.openai = new OpenAI({
-      apiKey: config.apiKey,
-      baseURL: config.baseURL
-    });
-    this.model = config.model || 'zai-org/GLM-4.5-FP8';
+    this.mode = config.mode || 'custom';
+
+    if (this.mode === 'gemini') {
+      this.gemini = new GoogleGenAI({ apiKey: config.apiKey });
+      this.model = config.model || 'gemini-2.0-flash';
+    } else {
+      this.openai = new OpenAI({
+        apiKey: config.apiKey,
+        baseURL: config.baseURL
+      });
+      this.model = config.model || 'zai-org/GLM-4.5-FP8';
+    }
+
     this.fallbackModel = config.fallbackModel;
     this.reasoningEffort = config.reasoningEffort;
     this.language = config.language || 'ko';
@@ -157,10 +169,110 @@ export class AIService {
     return `${seconds}s`;
   }
 
+  private async createGeminiStreamingCompletion(
+    request: ChatCompletionCreateParamsNonStreaming
+  ): Promise<string> {
+    if (!this.gemini) throw new Error('Gemini client not initialized');
+
+    let waitingTimer: ReturnType<typeof setInterval> | null = null;
+    const startTime = Date.now();
+    let frameIndex = 0;
+
+    try {
+      if (this.verbose) {
+        waitingTimer = setInterval(() => {
+          const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
+          const elapsed = this.formatElapsed(Date.now() - startTime);
+          process.stdout.write(`\r${frame} Waiting for response... (${elapsed})`);
+        }, 100);
+      }
+
+      const systemMessage = request.messages.find(m => m.role === 'system');
+      const userMessages = request.messages.filter(m => m.role !== 'system');
+      const contents = userMessages.map(m => ({
+        role: m.role === 'assistant' ? 'model' as const : 'user' as const,
+        parts: [{ text: typeof m.content === 'string' ? m.content : '' }]
+      }));
+
+      const maxTokens = (request as unknown as Record<string, unknown>).max_completion_tokens as number | undefined
+        ?? request.max_tokens
+        ?? 3000;
+
+      const stream = await this.gemini.models.generateContentStream({
+        model: this.model,
+        contents,
+        config: {
+          ...(systemMessage ? { systemInstruction: typeof systemMessage.content === 'string' ? systemMessage.content : '' } : {}),
+          maxOutputTokens: maxTokens,
+        }
+      });
+
+      const contentChunks: string[] = [];
+      let chunkCount = 0;
+      let lastChunkUsage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
+
+      for await (const chunk of stream) {
+        if (chunk.usageMetadata) {
+          lastChunkUsage = chunk.usageMetadata;
+        }
+
+        const text = chunk.text;
+        if (text) {
+          contentChunks.push(text);
+          chunkCount++;
+
+          if (waitingTimer) {
+            clearInterval(waitingTimer);
+            waitingTimer = null;
+          }
+
+          if (this.verbose) {
+            const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
+            const elapsed = this.formatElapsed(Date.now() - startTime);
+            process.stdout.write(`\r${frame} Streaming... (${chunkCount} chunks, ${elapsed})`);
+          }
+        }
+      }
+
+      if (waitingTimer) {
+        clearInterval(waitingTimer);
+        waitingTimer = null;
+      }
+
+      if (this.verbose) {
+        const elapsed = this.formatElapsed(Date.now() - startTime);
+        if (lastChunkUsage) {
+          const prompt = lastChunkUsage.promptTokenCount ?? 0;
+          const response = lastChunkUsage.candidatesTokenCount ?? 0;
+          process.stdout.write(`\r✅ Complete (response: ${response}, prompt: ${prompt} tokens, ${elapsed})\n`);
+        } else {
+          process.stdout.write(`\r✅ Complete (~${chunkCount} chunks, ${elapsed})\n`);
+        }
+      }
+
+      return contentChunks.join('');
+    } catch (error) {
+      if (waitingTimer) {
+        clearInterval(waitingTimer);
+        waitingTimer = null;
+      }
+      if (this.verbose) {
+        process.stdout.write('\n');
+      }
+      throw error;
+    }
+  }
+
   private async createStreamingCompletion(
     request: ChatCompletionCreateParamsNonStreaming,
     attempt = 0
   ): Promise<string> {
+    if (this.mode === 'gemini') {
+      return this.createGeminiStreamingCompletion(request);
+    }
+
+    if (!this.openai) throw new Error('OpenAI client not initialized');
+
     let waitingTimer: ReturnType<typeof setInterval> | null = null;
 
     try {
@@ -353,7 +465,7 @@ export class AIService {
     try {
       this.debugLog('Sending request to AI API...');
       this.debugLog('Model:', this.model);
-      this.debugLog('Base URL:', this.openai.baseURL);
+      this.debugLog('Base URL:', this.openai?.baseURL ?? 'Gemini native');
       
       const customInstructions = extraInstructions && extraInstructions.trim().length > 0
         ? `Git diff will be provided separately in the user message.\n\n## Additional User Instructions\n${extraInstructions.trim()}`
@@ -491,7 +603,7 @@ export class AIService {
     try {
       this.debugLog('Sending request to AI API for tag notes...');
       this.debugLog('Model:', this.model);
-      this.debugLog('Base URL:', this.openai.baseURL);
+      this.debugLog('Base URL:', this.openai?.baseURL ?? 'Gemini native');
 
       const customInstructions = extraInstructions && extraInstructions.trim().length > 0
         ? `${extraInstructions.trim()}`
@@ -553,7 +665,7 @@ export class AIService {
     try {
       this.debugLog('Sending request to AI API for pull request message...');
       this.debugLog('Model:', this.model);
-      this.debugLog('Base URL:', this.openai.baseURL);
+      this.debugLog('Base URL:', this.openai?.baseURL ?? 'Gemini native');
 
       const content = await this.createStreamingCompletion({
         model: this.model,

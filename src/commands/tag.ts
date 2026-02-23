@@ -68,7 +68,8 @@ export class TagCommand {
       model: mergedModel,
       fallbackModel: storedConfig.fallbackModel,
       reasoningEffort: storedConfig.reasoningEffort,
-      language: storedConfig.language
+      language: storedConfig.language,
+      mode: storedConfig.mode,
     };
   }
 

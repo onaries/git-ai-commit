@@ -4,6 +4,11 @@ import { generatePullRequestPrompt } from '../prompts/pr';
 import OpenAI from 'openai';
 
 jest.mock('openai');
+jest.mock('@google/genai', () => ({
+  GoogleGenAI: jest.fn().mockImplementation(() => ({
+    models: { generateContentStream: jest.fn() }
+  }))
+}));
 const MockedOpenAI = OpenAI as jest.MockedClass<typeof OpenAI>;
 
 function createMockStream(content: string | null) {
@@ -77,7 +82,8 @@ describe('AIService', () => {
           }
         ],
         max_completion_tokens: 3000,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       });
     });
 
@@ -154,7 +160,8 @@ describe('AIService', () => {
           }
         ],
         max_completion_tokens: 3000,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       });
 
       expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(2, {
@@ -174,7 +181,8 @@ describe('AIService', () => {
           }
         ],
         max_tokens: 3000,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       });
     });
 
@@ -242,7 +250,8 @@ describe('AIService', () => {
           }
         ],
         max_completion_tokens: 4000,
-        stream: true
+        stream: true,
+        stream_options: { include_usage: true }
       });
     });
 

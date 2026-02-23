@@ -165,6 +165,7 @@ export class CommitCommand {
         reasoningEffort: existingConfig.reasoningEffort,
         language: existingConfig.language,
         verbose: !messageOnly,
+        mode: existingConfig.mode,
       };
 
       log("Getting staged changes...");
