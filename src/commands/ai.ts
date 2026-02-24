@@ -490,7 +490,7 @@ export class AIService {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_completion_tokens: this.maxCompletionTokens ?? 1000
+        max_completion_tokens: this.maxCompletionTokens ?? 3000
       });
 
       let finalMessage = content.trim() || null;
