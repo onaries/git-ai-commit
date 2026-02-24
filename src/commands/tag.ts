@@ -440,10 +440,14 @@ export class TagCommand {
             let pushSuccess = await GitService.pushTagToRemote(trimmedName, remote);
 
             if (!pushSuccess) {
-              console.log(`⚠️  Normal push failed, trying force push...`);
-              pushSuccess = await GitService.forcePushTag(trimmedName, remote);
-            }
+              console.log(`⚠️  Normal push failed for ${remote}. Force push may be required.`);
+              const shouldForcePush = await this.confirmForcePush(trimmedName);
 
+              if (shouldForcePush) {
+                console.log(`Force pushing tag ${trimmedName} to ${remote}...`);
+                pushSuccess = await GitService.forcePushTag(trimmedName, remote);
+              }
+            }
             if (pushSuccess) {
               console.log(`✅ Tag ${trimmedName} pushed to ${remote} successfully!`);
             } else {
