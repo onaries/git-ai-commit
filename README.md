@@ -95,6 +95,22 @@ When AI generation is used, the CLI previews the tag message and asks for confir
 
 Providing `--message` uses your text verbatim but still asks for tag creation confirmation.
 
+## Git Hook
+
+Install a `prepare-commit-msg` hook so that `git commit` automatically generates an AI message:
+
+```bash
+git-ai-commit hook install    # install the hook in the current repo
+git-ai-commit hook uninstall  # remove the hook
+git-ai-commit hook status     # check installation status
+```
+
+Once installed, running `git commit` (without `-m`) will:
+1. Generate an AI commit message from your staged changes
+2. Pre-fill it in your editor for review and editing
+3. Proceed with the commit when you save and close the editor
+
+The hook is skipped when using `git commit -m "..."`, merge commits, or `--amend`.
 ## Configuration
 
 Persist defaults without exporting environment variables through the interactive config command:

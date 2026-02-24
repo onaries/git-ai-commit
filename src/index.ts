@@ -9,6 +9,7 @@ import { PullRequestCommand } from './commands/prCommand';
 import { TagCommand } from './commands/tag';
 import { HistoryCommand } from './commands/history';
 import { CompletionCommand } from './commands/completion';
+import { HookCommand } from './commands/hookCommand';
 
 function getPackageVersion(): string {
   try {
@@ -36,6 +37,7 @@ const pullRequestCommand = new PullRequestCommand();
 const tagCommand = new TagCommand();
 const historyCommand = new HistoryCommand();
 const completionCommand = new CompletionCommand();
+const hookCommand = new HookCommand();
 
 program.addCommand(commitCommand.getCommand());
 program.addCommand(configCommand.getCommand());
@@ -43,5 +45,6 @@ program.addCommand(pullRequestCommand.getCommand());
 program.addCommand(tagCommand.getCommand());
 program.addCommand(historyCommand.getCommand());
 program.addCommand(completionCommand.getCommand());
+program.addCommand(hookCommand.getCommand());
 
 program.parse();

@@ -33,7 +33,7 @@ _git_ai_commit() {
     local cur prev words cword
     _init_completion || return
 
-    local commands="commit config pr tag history completion"
+    local commands="commit config pr tag history completion hook"
     
     # Global options
     local global_opts="-v --version -h --help"
@@ -119,6 +119,9 @@ _git_ai_commit() {
         completion)
             COMPREPLY=( \$(compgen -W "bash zsh" -- "\${cur}") )
             ;;
+        hook)
+            COMPREPLY=( \$(compgen -W "install uninstall status" -- "\${cur}") )
+            ;;
     esac
 }
 
@@ -157,6 +160,7 @@ _git-ai-commit() {
                 'tag:Create an annotated git tag with AI-generated notes'
                 'history:Manage git-ai-commit command history'
                 'completion:Generate shell completion scripts'
+                'hook:Manage prepare-commit-msg git hook'
             )
             _describe -t commands 'git-ai-commit commands' commands
             ;;
@@ -237,6 +241,10 @@ _git-ai-commit() {
                 completion)
                     _arguments \\
                         '1:shell:(bash zsh)'
+                    ;;
+                hook)
+                    _arguments \\
+                        '1:action:(install uninstall status)'
                     ;;
             esac
             ;;
