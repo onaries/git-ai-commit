@@ -1,7 +1,7 @@
 # Changelog
 
 
-## 1.2.0 - 2026-02-24
+## 1.2.1 - 2026-02-24
 
 ### New Features
  Add `--max-tokens` config option to set max completion tokens for AI responses
