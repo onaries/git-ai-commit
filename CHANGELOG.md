@@ -1,5 +1,21 @@
 # Changelog
 
+
+## 1.2.0 - 2026-02-24
+
+### New Features
+ Add `--max-tokens` config option to set max completion tokens for AI responses
+ Per-command defaults when not configured: commit=1000, tag=3000, PR=4000
+
+### Improvements
+ Reduce `MAX_DIFF_TOKENS` from 50000 to 25000 for faster Gemini native mode processing
+ Reduce `MAX_FILE_LINES` from 400 to 200 and `MAX_NEW_FILE_LINES` from 200 to 100
+ Reduce default commit `max_completion_tokens` from 3000 to 1000
+
+### Testing
+ Increase ai.ts test coverage to 89% (43 tests)
+ Increase commit.ts test coverage to 93% (13 tests)
+
 ## 1.1.8 - 2026-01-30
 
 ### Improvements

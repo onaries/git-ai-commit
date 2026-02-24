@@ -159,7 +159,7 @@ describe('GitService', () => {
       const result = await GitService.getStagedDiff();
 
       expect(result.success).toBe(true);
-      expect(result.diff).toContain('... (truncated remaining diff to stay under 50000 tokens)');
+      expect(result.diff).toContain('... (truncated remaining diff to stay under 25000 tokens)');
       expect(result.diff!.length).toBeLessThan(sections.length);
     });
   });

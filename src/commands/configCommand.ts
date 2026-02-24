@@ -13,6 +13,7 @@ export interface ConfigOptions {
   mode?: AIMode;
   coAuthor?: string;
   noCoAuthor?: boolean;
+  maxTokens?: string;
 }
 
 export class ConfigCommand {
@@ -33,6 +34,7 @@ export class ConfigCommand {
       .option('--mode <mode>', 'Persist AI mode (custom | openai | gemini)')
       .option('--co-author <value>', 'Set co-author for commits (e.g. "Name <email>")')
       .option('--no-co-author', 'Disable co-author')
+      .option('--max-tokens <number>', 'Persist max completion tokens for AI responses')
       .action(this.handleConfig.bind(this));
   }
 
@@ -76,6 +78,7 @@ export class ConfigCommand {
       language?: SupportedLanguage;
       autoPush?: boolean;
       coAuthor?: string | false;
+      maxCompletionTokens?: number;
     } = {};
 
     if (options.language) {
@@ -126,6 +129,15 @@ export class ConfigCommand {
       }
       updates.coAuthor = coAuthor;
     }
+    if (options.maxTokens !== undefined) {
+      const parsed = parseInt(options.maxTokens, 10);
+      if (isNaN(parsed) || parsed <= 0) {
+        console.error('Max tokens must be a positive number.');
+        process.exit(1);
+      }
+      updates.maxCompletionTokens = parsed;
+    }
+
     const hasUpdates = Object.keys(updates).length > 0;
 
     if (!options.show && !hasUpdates) {
@@ -140,6 +152,7 @@ export class ConfigCommand {
       console.log('  git-ai-commit config --model gpt-4o-mini    # Persist preferred AI model');
       console.log('  git-ai-commit config --fallback-model glm-4-flash  # Fallback model for 429 retry');
       console.log('  git-ai-commit config --co-author "Name <email>"  # Set co-author for commits');
+      console.log('  git-ai-commit config --max-tokens 2000        # Set max completion tokens for AI');
       return;
     }
 
@@ -167,6 +180,7 @@ export class ConfigCommand {
         console.log(`Reasoning Effort: ${config.reasoningEffort || 'Not set (model default)'}`);
         console.log(`Mode: ${config.mode || 'custom (default)'}`);
         console.log(`Co-author: ${config.coAuthor === false ? 'disabled' : config.coAuthor}`);
+        console.log(`Max Completion Tokens: ${config.maxCompletionTokens || 'Not set (using per-command defaults)'}`);
       } catch (error) {
         console.error('Error reading configuration:', error instanceof Error ? error.message : error);
         process.exit(1);

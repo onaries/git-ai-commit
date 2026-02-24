@@ -66,6 +66,7 @@ export class PullRequestCommand {
         language: existingConfig.language,
         verbose: false,
         mode: existingConfig.mode,
+        maxCompletionTokens: existingConfig.maxCompletionTokens,
       });
 
       const aiResult = await aiService.generatePullRequestMessage(

@@ -17,6 +17,7 @@ export interface AIServiceConfig {
   language?: SupportedLanguage;
   verbose?: boolean;
   mode?: AIMode;
+  maxCompletionTokens?: number;
 }
 
 export interface CommitGenerationResult {
@@ -46,6 +47,7 @@ export class AIService {
   private reasoningEffort?: ReasoningEffort;
   private language: SupportedLanguage;
   private verbose: boolean;
+  private maxCompletionTokens?: number;
 
   constructor(config: AIServiceConfig) {
     this.mode = config.mode || 'custom';
@@ -65,6 +67,7 @@ export class AIService {
     this.reasoningEffort = config.reasoningEffort;
     this.language = config.language || 'ko';
     this.verbose = config.verbose ?? true;
+    this.maxCompletionTokens = config.maxCompletionTokens;
   }
 
   private debugLog(...args: unknown[]): void {
@@ -487,7 +490,7 @@ export class AIService {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_completion_tokens: 3000
+        max_completion_tokens: this.maxCompletionTokens ?? 1000
       });
 
       let finalMessage = content.trim() || null;
@@ -631,7 +634,7 @@ export class AIService {
             content: userContent
           }
         ],
-        max_completion_tokens: 3000
+        max_completion_tokens: this.maxCompletionTokens ?? 3000
       });
 
       const finalNotes = content.trim() || null;
@@ -684,7 +687,7 @@ export class AIService {
             content: `Git diff between ${baseBranch} and ${compareBranch}:\n${diff}`
           }
         ],
-        max_completion_tokens: 4000
+        max_completion_tokens: this.maxCompletionTokens ?? 4000
       });
 
       const finalMessage = content.trim() || null;

@@ -166,6 +166,7 @@ export class CommitCommand {
         language: existingConfig.language,
         verbose: !messageOnly,
         mode: existingConfig.mode,
+        maxCompletionTokens: existingConfig.maxCompletionTokens,
       };
 
       log("Getting staged changes...");

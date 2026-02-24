@@ -19,6 +19,7 @@ export interface EnvironmentConfig {
   language: SupportedLanguage;
   autoPush: boolean;
   coAuthor?: string | false;
+  maxCompletionTokens?: number;
 }
 
 interface StoredConfig {
@@ -31,6 +32,7 @@ interface StoredConfig {
   language?: SupportedLanguage | string;
   autoPush?: boolean;
   coAuthor?: string | false;
+  maxCompletionTokens?: number;
 }
 
 const DEFAULT_MODEL = 'zai-org/GLM-4.5-FP8';
@@ -145,6 +147,9 @@ export class ConfigService {
     const language = this.normalizeLanguage(fileConfig.language ?? envConfig.language);
     const autoPush = typeof fileConfig.autoPush === 'boolean' ? fileConfig.autoPush : envConfig.autoPush;
     const coAuthor = fileConfig.coAuthor === false ? false : (fileConfig.coAuthor || DEFAULT_CO_AUTHOR);
+    const maxCompletionTokens = typeof fileConfig.maxCompletionTokens === 'number' && fileConfig.maxCompletionTokens > 0
+      ? fileConfig.maxCompletionTokens
+      : undefined;
     return {
       apiKey,
       baseURL,
@@ -155,6 +160,7 @@ export class ConfigService {
       language,
       autoPush,
       coAuthor,
+      maxCompletionTokens,
     };
   }
 

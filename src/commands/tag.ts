@@ -70,6 +70,7 @@ export class TagCommand {
       reasoningEffort: storedConfig.reasoningEffort,
       language: storedConfig.language,
       mode: storedConfig.mode,
+      maxCompletionTokens: storedConfig.maxCompletionTokens,
     };
   }
 

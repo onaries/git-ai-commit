@@ -92,7 +92,7 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_completion_tokens: 3000,
+        max_completion_tokens: 1000,
         stream: true,
         stream_options: { include_usage: true }
       });
@@ -170,7 +170,7 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_completion_tokens: 3000,
+        max_completion_tokens: 1000,
         stream: true,
         stream_options: { include_usage: true }
       });
@@ -191,7 +191,7 @@ describe('AIService', () => {
             content: `Git diff:\n${diff}`
           }
         ],
-        max_tokens: 3000,
+        max_tokens: 1000,
         stream: true,
         stream_options: { include_usage: true }
       });
@@ -709,7 +709,7 @@ describe('AIService', () => {
           contents: [{ role: 'user', parts: [{ text: 'Git diff:\nmy-diff' }] }],
           config: expect.objectContaining({
             systemInstruction: expect.stringContaining('Git diff will be provided separately in the user message.'),
-            maxOutputTokens: 3000
+            maxOutputTokens: 1000
           })
         })
       );

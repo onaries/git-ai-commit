@@ -4,11 +4,11 @@ import { promisify } from 'util';
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 const GIT_DIFF_MAX_BUFFER = 50 * 1024 * 1024;
-const MAX_DIFF_TOKENS = 50000;
+const MAX_DIFF_TOKENS = 25000;
 const APPROX_CHARS_PER_TOKEN = 4;
 const MAX_DIFF_CHARS = MAX_DIFF_TOKENS * APPROX_CHARS_PER_TOKEN;
-const MAX_FILE_LINES = 400;
-const MAX_NEW_FILE_LINES = 200;
+const MAX_FILE_LINES = 200;
+const MAX_NEW_FILE_LINES = 100;
 
 const splitDiffSections = (diff: string): string[] => {
   const lines = diff.split('\n');
