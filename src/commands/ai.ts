@@ -82,6 +82,16 @@ export class AIService {
     return status === 429;
   }
 
+  private isServerError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+    const status = (error as { status?: number }).status;
+    return status === 503 || status === 502;
+  }
+
+  private async delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private isUnsupportedTokenParamError(
     error: unknown,
     param: 'max_tokens' | 'max_completion_tokens'
@@ -420,6 +430,16 @@ export class AIService {
         const fallbackRequest = this.swapTokenParam(request, 'max_completion_tokens');
         this.debugLog('Retrying with max_completion_tokens due to unsupported max_tokens error.');
         return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
+      }
+
+      if (attempt < 3 && this.isServerError(error)) {
+        const waitTime = (attempt + 1) * 2000;
+        this.debugLog(`Server error (${(error as { status?: number }).status}). Retrying in ${waitTime / 1000}s... (attempt ${attempt + 1}/3)`);
+        if (this.verbose) {
+          process.stdout.write(`\r⏳ Server error. Retrying in ${waitTime / 1000}s...`);
+        }
+        await this.delay(waitTime);
+        return await this.createStreamingCompletion(request, attempt + 1);
       }
 
       if (this.isRateLimitError(error) && this.fallbackModel && request.model !== this.fallbackModel) {
