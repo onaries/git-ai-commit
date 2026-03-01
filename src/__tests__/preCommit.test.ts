@@ -13,6 +13,7 @@ jest.mock('child_process', () => ({
 jest.mock('../commands/git', () => ({
   GitService: {
     getStagedDiff: jest.fn().mockResolvedValue({ success: true, diff: 'diff' }),
+    getStagedStat: jest.fn().mockResolvedValue(''),
     createCommit: jest.fn().mockResolvedValue(true),
     push: jest.fn().mockResolvedValue(true)
   }

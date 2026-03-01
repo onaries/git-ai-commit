@@ -125,6 +125,15 @@ export class GitService {
     }
   }
 
+  static async getStagedStat(): Promise<string> {
+    try {
+      const { stdout } = await execFileAsync('git', ['diff', '--staged', '--stat']);
+      return stdout.trim();
+    } catch {
+      return '';
+    }
+  }
+
   static async getBranchDiff(base: string, compare: string): Promise<GitDiffResult> {
     try {
       const { stdout } = await execFileAsync('git', ['diff', `${base}...${compare}`], {

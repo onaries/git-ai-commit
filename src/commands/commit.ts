@@ -186,6 +186,11 @@ export class CommitCommand {
         process.exit(1);
       }
 
+      const stat = await GitService.getStagedStat();
+      if (stat) {
+        console.log(stat);
+      }
+
       log("Generating commit message...");
 
       const aiService = new AIService(aiConfig);

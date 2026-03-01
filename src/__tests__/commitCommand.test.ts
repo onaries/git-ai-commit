@@ -9,6 +9,7 @@ const mockGenerateCommitMessage = jest.fn();
 jest.mock('../commands/git', () => ({
   GitService: {
     getStagedDiff: jest.fn(),
+    getStagedStat: jest.fn().mockResolvedValue(''),
     createCommit: jest.fn(),
     push: jest.fn()
   }
