@@ -61,6 +61,7 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           AI_MODE: gemini
+          AI_MODEL: ${{ vars.AI_MODEL || 'gemini-3-flash-preview' }}
 
       - name: Create annotated tag
         if: steps.check.outputs.exists == 'false'

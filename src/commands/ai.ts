@@ -54,7 +54,7 @@ export class AIService {
 
     if (this.mode === 'gemini') {
       this.gemini = new GoogleGenAI({ apiKey: config.apiKey });
-      this.model = config.model || 'gemini-2.0-flash';
+      this.model = config.model || 'gemini-3-flash-preview';
     } else {
       this.openai = new OpenAI({
         apiKey: config.apiKey,
