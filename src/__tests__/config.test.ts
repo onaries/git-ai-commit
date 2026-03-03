@@ -13,7 +13,7 @@ describe('ConfigService', () => {
     process.env = {
       PATH: originalEnv.PATH,
       NODE_ENV: 'test'
-    } as NodeJS.ProcessEnv;
+    } as typeof process.env;
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'git-ai-config-'));
     configPath = path.join(tempDir, 'config.json');
     process.env.GIT_AI_COMMIT_CONFIG_PATH = configPath;

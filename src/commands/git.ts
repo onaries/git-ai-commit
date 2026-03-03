@@ -211,7 +211,7 @@ export class GitService {
         success: true,
         tag
       };
-    } catch (error) {
+    } catch {
       return {
         success: false,
         error: 'Failed to determine the latest tag. Provide a base tag explicitly using --base-tag.'

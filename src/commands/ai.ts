@@ -170,8 +170,10 @@ export class AIService {
   private removeTemperature(
     request: OpenAI.ChatCompletionCreateParamsNonStreaming
   ): OpenAI.ChatCompletionCreateParamsNonStreaming {
+
     const { temperature, ...rest } = request;
-    return { ...rest };
+    void temperature;
+    return rest as Omit<OpenAI.ChatCompletionCreateParamsNonStreaming, 'temperature'>;
   }
 
   private readonly spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];

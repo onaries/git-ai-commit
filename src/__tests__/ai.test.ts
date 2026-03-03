@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 import { AIService } from '../commands/ai';
 import { generateCommitPrompt } from '../prompts/commit';
 import { generatePullRequestPrompt } from '../prompts/pr';

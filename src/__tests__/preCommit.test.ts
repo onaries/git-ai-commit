@@ -1,6 +1,5 @@
 import { CommitCommand } from '../commands/commit';
 import fs from 'fs';
-import path from 'path';
 import { spawn } from 'child_process';
 import { EventEmitter } from 'events';
 
