@@ -57,3 +57,15 @@ jobs:
             --title "$GITHUB_REF_NAME" \
             --notes "${{ steps.release_notes.outputs.NOTES }}" \
             --latest
+
+      - name: Cleanup release branches
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          gh api repos/${{ github.repository }}/branches --paginate -q '.[].name' | \
+            grep "^release/v${VERSION}" | \
+            while read branch; do
+              echo "Deleting branch: $branch"
+              git push origin --delete "$branch" || true
+            done

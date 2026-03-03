@@ -1,5 +1,9 @@
 # Git AI Commit
 
+[![npm version](https://img.shields.io/npm/v/@ksw8954/git-ai-commit)](https://www.npmjs.com/package/@ksw8954/git-ai-commit)
+[![GitHub release](https://img.shields.io/github/v/release/onaries/git-ai-commit)](https://github.com/onaries/git-ai-commit/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/onaries/git-ai-commit/ci.yml?branch=main&label=tests)](https://github.com/onaries/git-ai-commit/actions/workflows/ci.yml)
+
 AI-powered CLI that generates conventional commit messages based on your staged Git diff.
 
 ## Installation
@@ -139,7 +143,7 @@ Set the following variables (e.g., in a local `.env` file) before using the CLI:
 - `AI_MODE` controls which provider to use:
   - `custom` (default): uses `AI_*` vars first, falls back to `OPENAI_*`. Requests go through the OpenAI-compatible API.
   - `openai`: prioritises `OPENAI_*` vars. Requests go through the OpenAI-compatible API.
-  - `gemini`: uses the Google Gemini native SDK (`@google/genai`) directly. Reads `GEMINI_API_KEY` (or `AI_API_KEY`). Default model: `gemini-2.0-flash`.
+  - `gemini`: uses the Google Gemini native SDK (`@google/genai`) directly. Reads `GEMINI_API_KEY` (or `AI_API_KEY`). Default model: `gemini-3-flash-preview`.
 - Credentials: `AI_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` (priority depends on the selected mode).
 - Base URLs: `AI_BASE_URL` or `OPENAI_BASE_URL` (not used in `gemini` mode).
 - Models: `AI_MODEL` or `OPENAI_MODEL` (priority matches the selected mode).
