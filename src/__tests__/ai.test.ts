@@ -654,11 +654,11 @@ describe('AIService', () => {
       const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
       GoogleGenAI.mockClear();
 
-      const geminiService = new AIService({ apiKey: 'gem-key', mode: 'gemini', model: 'gemini-2.0-flash', verbose: false });
+      const geminiService = new AIService({ apiKey: 'gem-key', mode: 'gemini', model: 'gemini-3-flash-preview', verbose: false });
 
       expect(GoogleGenAI).toHaveBeenCalledWith({ apiKey: 'gem-key' });
       expect((geminiService as any).gemini).toBeTruthy();
-      expect((geminiService as any).model).toBe('gemini-2.0-flash');
+      expect((geminiService as any).model).toBe('gemini-3-flash-preview');
     });
 
     it('should stream content successfully in gemini mode', async () => {
@@ -741,7 +741,7 @@ describe('AIService', () => {
       const geminiSpy = jest.spyOn(geminiService as any, 'createGeminiStreamingCompletion').mockResolvedValue('gemini-result');
 
       const result = await (geminiService as any).createStreamingCompletion({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3-flash-preview',
         messages: [{ role: 'user', content: 'hello' }],
         max_completion_tokens: 123
       });

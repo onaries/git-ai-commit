@@ -113,7 +113,7 @@ export class ConfigService {
     if (resolvedMode === 'gemini') {
       apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
       baseURL = undefined;
-      model = process.env.AI_MODEL || 'gemini-2.0-flash';
+      model = process.env.AI_MODEL || 'gemini-3-flash-preview';
     } else if (resolvedMode === 'openai') {
       apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
       baseURL = process.env.OPENAI_BASE_URL || process.env.AI_BASE_URL;
