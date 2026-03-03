@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.3 - 2026-03-03
+
+### New Features
+- Add `prek` support as pre-commit hook runner (prek preferred, pre-commit fallback)
+- Display file-level diff stats after staging (`git diff --staged --stat`)
+- Auto-retry on Gemini 503/502 server errors (up to 3 attempts with progressive backoff)
+
+### Improvements
+- Restore commit `max_completion_tokens` default to 3000 (Korean text token consumption)
+- Add PR CI workflow: lint, typecheck, build, and test on pull requests
+
+### CI/CD
+- Switch npm publish to OIDC trusted publishing (no NPM_TOKEN required)
+- Add GitHub Release creation after npm publish
 
 ## 1.2.2 - 2026-02-27
 
