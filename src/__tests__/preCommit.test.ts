@@ -85,7 +85,7 @@ describe('Pre-commit Hook Tests', () => {
 
   it('should run pre-commit hooks if .pre-commit-config.yaml is present', async () => {
     mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
-    jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(true);
+    jest.spyOn(command as any, 'isCommandAvailable').mockImplementation((...args: unknown[]) => args[0] === 'pre-commit');
 
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
 
@@ -137,7 +137,7 @@ describe('Pre-commit Hook Tests', () => {
     mockFsRead.mockReturnValue(JSON.stringify({
       scripts: { 'pre-commit': 'test' }
     }));
-    jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(true);
+    jest.spyOn(command as any, 'isCommandAvailable').mockImplementation((...args: unknown[]) => args[0] === 'pre-commit');
 
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
 
@@ -158,8 +158,9 @@ describe('Pre-commit Hook Tests', () => {
     await (command as any).handleCommit({});
 
     expect(mockSpawn).not.toHaveBeenCalledWith('pre-commit', ['run'], expect.anything());
+    expect(mockSpawn).not.toHaveBeenCalledWith('prek', ['run'], expect.anything());
     expect(warnSpy).toHaveBeenCalledWith(
-      expect.stringContaining("'pre-commit' is not installed")
+      expect.stringContaining("neither 'prek' nor 'pre-commit' is installed")
     );
     warnSpy.mockRestore();
   });

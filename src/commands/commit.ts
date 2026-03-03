@@ -95,29 +95,35 @@ export class CommitCommand {
       }
     }
 
-    // 2. Check for .pre-commit-config.yaml (Python/General pre-commit)
+    // 2. Check for .pre-commit-config.yaml (pre-commit or prek)
     const preCommitConfigPath = path.resolve(process.cwd(), ".pre-commit-config.yaml");
     if (fs.existsSync(preCommitConfigPath)) {
-      if (!this.isCommandAvailable("pre-commit")) {
-        console.warn("⚠️ .pre-commit-config.yaml found but 'pre-commit' is not installed. Skipping hooks.");
+      const cmd = this.isCommandAvailable("prek")
+        ? "prek"
+        : this.isCommandAvailable("pre-commit")
+          ? "pre-commit"
+          : null;
+
+      if (!cmd) {
+        console.warn("⚠️ .pre-commit-config.yaml found but neither 'prek' nor 'pre-commit' is installed. Skipping hooks.");
         return;
       }
 
-      console.log("Found .pre-commit-config.yaml, running pre-commit hooks...");
+      console.log(`Found .pre-commit-config.yaml, running ${cmd} hooks...`);
 
       await new Promise<void>((resolve, reject) => {
-        const child = spawn("pre-commit", ["run"], {
+        const child = spawn(cmd, ["run"], {
           stdio: "inherit",
           shell: true,
         });
 
         child.on("close", (code) => {
           if (code === 0) {
-            console.log("✅ pre-commit hooks passed");
+            console.log(`✅ ${cmd} hooks passed`);
             resolve();
           } else {
-            console.error(`❌ pre-commit hooks failed with code ${code}`);
-            reject(new Error(`pre-commit hooks failed with code ${code}`));
+            console.error(`❌ ${cmd} hooks failed with code ${code}`);
+            reject(new Error(`${cmd} hooks failed with code ${code}`));
           }
         });
 
