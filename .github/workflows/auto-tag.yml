@@ -45,20 +45,26 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create tag with AI-generated notes
+      - name: Generate release notes with AI
         if: steps.check.outputs.exists == 'false'
+        id: notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
           if [ -n "$PREV_TAG" ]; then
-            node dist/index.js tag ${{ steps.version.outputs.tag }} --base-tag "$PREV_TAG" --yes
+            NOTES=$(node dist/index.js tag ${{ steps.version.outputs.tag }} --base-tag "$PREV_TAG" --message-only)
           else
-            node dist/index.js tag ${{ steps.version.outputs.tag }} --yes
+            NOTES=$(node dist/index.js tag ${{ steps.version.outputs.tag }} --message-only)
           fi
+          echo "NOTES<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
-      - name: Push tag
+      - name: Create annotated tag
         if: steps.check.outputs.exists == 'false'
-        run: git push origin ${{ steps.version.outputs.tag }}
+        run: |
+          git tag -a ${{ steps.version.outputs.tag }} -m "${{ steps.notes.outputs.NOTES }}"
+          git push origin ${{ steps.version.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

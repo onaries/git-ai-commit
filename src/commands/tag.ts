@@ -13,6 +13,7 @@ export interface TagOptions {
   baseTag?: string;
   prompt?: string;
   yes?: boolean;
+  messageOnly?: boolean;
 }
 
 interface TagStyleMismatch {
@@ -37,6 +38,7 @@ export class TagCommand {
       .option('-t, --base-tag <tag>', 'Existing tag to diff against when generating notes')
       .option('--prompt <text>', 'Additional instructions to append to the AI prompt for this tag')
       .option('-y, --yes', 'Skip all confirmations (non-interactive mode)')
+      .option('--message-only', 'Print only the generated tag message without creating the tag')
       .action(async (tagName: string | undefined, options: TagOptions) => {
         await this.handleTag(tagName, options);
       });
@@ -74,6 +76,7 @@ export class TagCommand {
       language: storedConfig.language,
       mode: storedConfig.mode,
       maxCompletionTokens: storedConfig.maxCompletionTokens,
+      verbose: !options.messageOnly,
     };
   }
 
@@ -356,6 +359,12 @@ export class TagCommand {
       }
 
       tagMessage = aiResult.notes;
+    }
+
+    // --message-only: print result and exit
+    if (options.messageOnly) {
+      process.stdout.write(tagMessage);
+      return;
     }
 
     // Show preview and confirm before creating the tag
