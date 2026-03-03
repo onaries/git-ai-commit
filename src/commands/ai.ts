@@ -185,7 +185,8 @@ export class AIService {
   }
 
   private async createGeminiStreamingCompletion(
-    request: ChatCompletionCreateParamsNonStreaming
+    request: ChatCompletionCreateParamsNonStreaming,
+    attempt = 0
   ): Promise<string> {
     if (!this.gemini) throw new Error('Gemini client not initialized');
 
@@ -274,6 +275,15 @@ export class AIService {
       if (this.verbose) {
         process.stdout.write('\n');
       }
+      if (attempt < 3 && this.isServerError(error)) {
+        const waitTime = (attempt + 1) * 2000;
+        this.debugLog(`Server error (${(error as { status?: number }).status}). Retrying in ${waitTime / 1000}s... (attempt ${attempt + 1}/3)`);
+        if (this.verbose) {
+          process.stdout.write(`\r⏳ Server error. Retrying in ${waitTime / 1000}s...`);
+        }
+        await this.delay(waitTime);
+        return await this.createGeminiStreamingCompletion(request, attempt + 1);
+      }
       throw error;
     }
   }
@@ -283,7 +293,7 @@ export class AIService {
     attempt = 0
   ): Promise<string> {
     if (this.mode === 'gemini') {
-      return this.createGeminiStreamingCompletion(request);
+      return this.createGeminiStreamingCompletion(request, attempt);
     }
 
     if (!this.openai) throw new Error('OpenAI client not initialized');
