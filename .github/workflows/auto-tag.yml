@@ -14,8 +14,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Extract version from package.json
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Extract version
         id: version
         run: |
           VERSION=$(node -p "require('./package.json').version")
@@ -31,10 +45,20 @@ jobs:
             echo "exists=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Create and push tag
+      - name: Create tag with AI-generated notes
         if: steps.check.outputs.exists == 'false'
         run: |
-          git tag ${{ steps.version.outputs.tag }}
-          git push origin ${{ steps.version.outputs.tag }}
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            node dist/index.js tag ${{ steps.version.outputs.tag }} --base-tag "$PREV_TAG" --yes
+          else
+            node dist/index.js tag ${{ steps.version.outputs.tag }} --yes
+          fi
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: Push tag
+        if: steps.check.outputs.exists == 'false'
+        run: git push origin ${{ steps.version.outputs.tag }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
