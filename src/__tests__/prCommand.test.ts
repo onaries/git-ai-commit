@@ -1,6 +1,5 @@
 import { PullRequestCommand } from '../commands/prCommand';
 import { GitService } from '../commands/git';
-import { AIService } from '../commands/ai';
 import { ConfigService } from '../commands/config';
 
 const mockGeneratePullRequestMessage = jest.fn();

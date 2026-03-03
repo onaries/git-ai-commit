@@ -48,7 +48,7 @@ _git_ai_commit() {
 
     case "\${cword}" in
         1)
-            COMPREPLY=( \$(compgen -W "\${commands} \${global_opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${commands} \${global_opts}" -- "\${cur}") )
             return
             ;;
     esac
@@ -62,51 +62,51 @@ _git_ai_commit() {
                     return
                     ;;
             esac
-            COMPREPLY=( \$(compgen -W "\${commit_opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${commit_opts}" -- "\${cur}") )
             ;;
         config)
             case "\${prev}" in
                 -l|--language)
-                    COMPREPLY=( \$(compgen -W "ko en" -- "\${cur}") )
+                    COMPREPLY=( $(compgen -W "ko en" -- "\${cur}") )
                     return
                     ;;
                 --mode)
-                    COMPREPLY=( \$(compgen -W "custom openai gemini" -- "\${cur}") )
+                    COMPREPLY=( $(compgen -W "custom openai gemini" -- "\${cur}") )
                     return
                     ;;
                 -k|--api-key|-b|--base-url|-m|--model|--co-author)
                     return
                     ;;
             esac
-            COMPREPLY=( \$(compgen -W "\${config_opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${config_opts}" -- "\${cur}") )
             ;;
         pr)
             case "\${prev}" in
                 --base|--compare)
                     # Complete with git branches
-                    local branches=\$(git branch --format='%(refname:short)' 2>/dev/null)
-                    COMPREPLY=( \$(compgen -W "\${branches}" -- "\${cur}") )
+                    local branches=$(git branch --format='%(refname:short)' 2>/dev/null)
+                    COMPREPLY=( $(compgen -W "\${branches}" -- "\${cur}") )
                     return
                     ;;
                 -k|--api-key|-b|--base-url|--model)
                     return
                     ;;
             esac
-            COMPREPLY=( \$(compgen -W "\${pr_opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${pr_opts}" -- "\${cur}") )
             ;;
         tag)
             case "\${prev}" in
                 -t|--base-tag)
                     # Complete with git tags
-                    local tags=\$(git tag 2>/dev/null)
-                    COMPREPLY=( \$(compgen -W "\${tags}" -- "\${cur}") )
+                    local tags=$(git tag 2>/dev/null)
+                    COMPREPLY=( $(compgen -W "\${tags}" -- "\${cur}") )
                     return
                     ;;
                 -k|--api-key|--base-url|-m|--model|--message|--prompt)
                     return
                     ;;
             esac
-            COMPREPLY=( \$(compgen -W "\${tag_opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${tag_opts}" -- "\${cur}") )
             ;;
         history)
             case "\${prev}" in
@@ -114,13 +114,13 @@ _git_ai_commit() {
                     return
                     ;;
             esac
-            COMPREPLY=( \$(compgen -W "\${history_opts}" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "\${history_opts}" -- "\${cur}") )
             ;;
         completion)
-            COMPREPLY=( \$(compgen -W "bash zsh" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "bash zsh" -- "\${cur}") )
             ;;
         hook)
-            COMPREPLY=( \$(compgen -W "install uninstall status" -- "\${cur}") )
+            COMPREPLY=( $(compgen -W "install uninstall status" -- "\${cur}") )
             ;;
     esac
 }
@@ -135,11 +135,11 @@ complete -F _git_ai_commit git-ai-commit
 # Installation:
 #   mkdir -p ~/.zsh/completions
 #   git-ai-commit completion zsh > ~/.zsh/completions/_git-ai-commit
-#   # Add to ~/.zshrc (before compinit): fpath=(~/.zsh/completions \$fpath)
+#   # Add to ~/.zshrc (before compinit): fpath=(~/.zsh/completions $fpath)
 #   # Then restart shell or run: autoload -Uz compinit && compinit
 
 _git-ai-commit() {
-    local curcontext="\$curcontext" state line
+    local curcontext="$curcontext" state line
     typeset -A opt_args
 
     _arguments -C \\
@@ -150,7 +150,7 @@ _git-ai-commit() {
         '1: :->command' \\
         '*:: :->args' && return
 
-    case \$state in
+    case $state in
         command)
             local -a commands
             commands=(
@@ -165,7 +165,7 @@ _git-ai-commit() {
             _describe -t commands 'git-ai-commit commands' commands
             ;;
         args)
-            case \$line[1] in
+            case $line[1] in
                 commit)
                     _arguments \\
                         '-k[OpenAI API key]:key:' \\
@@ -207,9 +207,9 @@ _git-ai-commit() {
                         '-b[Override API base URL]:url:' \\
                         '--base-url[Override API base URL]:url:' \\
                         '--model[Override AI model]:model:'
-                    [[ \$state == branches ]] && {
+                    [[ $state == branches ]] && {
                         local -a branches
-                        branches=(\${(f)"\$(git branch --format='%(refname:short)' 2>/dev/null)"})
+                        branches=(\${(f)"$(git branch --format='%(refname:short)' 2>/dev/null)"})
                         _describe -t branches 'branches' branches
                     }
                     ;;
@@ -225,9 +225,9 @@ _git-ai-commit() {
                         '-t[Existing tag to diff against]:tag:->tags' \\
                         '--base-tag[Existing tag to diff against]:tag:->tags' \\
                         '--prompt[Additional AI prompt instructions]:text:'
-                    [[ \$state == tags ]] && {
+                    [[ $state == tags ]] && {
                         local -a tags
-                        tags=(\${(f)"\$(git tag 2>/dev/null)"})
+                        tags=(\${(f)"$(git tag 2>/dev/null)")
                         _describe -t tags 'tags' tags
                     }
                     ;;

@@ -12,6 +12,8 @@ export interface TagOptions {
   message?: string;
   baseTag?: string;
   prompt?: string;
+  yes?: boolean;
+  messageOnly?: boolean;
 }
 
 interface TagStyleMismatch {
@@ -23,6 +25,7 @@ interface TagStyleMismatch {
 
 export class TagCommand {
   private program: Command;
+  private autoConfirm = false;
 
   constructor() {
     this.program = new Command('tag')
@@ -34,6 +37,8 @@ export class TagCommand {
       .option('--message <message>', 'Tag message to use directly (skips AI generation)')
       .option('-t, --base-tag <tag>', 'Existing tag to diff against when generating notes')
       .option('--prompt <text>', 'Additional instructions to append to the AI prompt for this tag')
+      .option('-y, --yes', 'Skip all confirmations (non-interactive mode)')
+      .option('--message-only', 'Print only the generated tag message without creating the tag')
       .action(async (tagName: string | undefined, options: TagOptions) => {
         await this.handleTag(tagName, options);
       });
@@ -71,6 +76,7 @@ export class TagCommand {
       language: storedConfig.language,
       mode: storedConfig.mode,
       maxCompletionTokens: storedConfig.maxCompletionTokens,
+      verbose: !options.messageOnly,
     };
   }
 
@@ -78,6 +84,7 @@ export class TagCommand {
     const storedConfig = ConfigService.getConfig();
     const mergedModel = options.model || storedConfig.model;
 
+    this.autoConfirm = options.yes ?? false;
     let trimmedName = tagName?.trim();
 
     // If no tag name provided, auto-increment from latest tag
@@ -354,6 +361,12 @@ export class TagCommand {
       tagMessage = aiResult.notes;
     }
 
+    // --message-only: print result and exit
+    if (options.messageOnly) {
+      process.stdout.write(tagMessage);
+      return;
+    }
+
     // Show preview and confirm before creating the tag
     console.log('\nTag message preview:\n');
     console.log(tagMessage);
@@ -518,6 +531,7 @@ export class TagCommand {
   }
 
   private async confirmStyleMismatch(mismatch: TagStyleMismatch): Promise<boolean> {
+    if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -538,6 +552,7 @@ export class TagCommand {
   }
 
   private async selectRemotesForPush(tagName: string, remotes: string[]): Promise<string[] | null> {
+    if (this.autoConfirm) return remotes;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -585,6 +600,7 @@ export class TagCommand {
   }
 
   private async confirmTagCreate(tagName: string): Promise<boolean> {
+    if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -601,6 +617,7 @@ export class TagCommand {
   }
 
   private async confirmTagDelete(tagName: string): Promise<boolean> {
+    if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -617,6 +634,7 @@ export class TagCommand {
   }
 
   private async confirmRemoteTagDelete(tagName: string): Promise<boolean> {
+    if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -633,6 +651,7 @@ export class TagCommand {
   }
 
   private async confirmBaseTagDelete(tagName: string): Promise<boolean> {
+    if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -649,6 +668,7 @@ export class TagCommand {
   }
 
   private async confirmForcePush(tagName: string): Promise<boolean> {
+    if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout

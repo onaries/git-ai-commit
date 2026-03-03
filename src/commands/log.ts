@@ -85,7 +85,7 @@ export class LogService {
       }).filter((e): e is HistoryEntry => Boolean(e));
       const result = limit && limit > 0 ? parsed.slice(-limit) : parsed;
       return result;
-    } catch (e) {
+    } catch {
       return [];
     }
   }

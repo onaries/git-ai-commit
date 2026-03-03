@@ -129,12 +129,12 @@ describe('TagCommand', () => {
     });
 
     expect(GitService.getCommitSummariesSince).toHaveBeenCalledWith('v1.2.0');
-    expect(AIService).toHaveBeenCalledWith({
+    expect(AIService).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: 'test-key',
       baseURL: 'https://api.test',
       model: 'gpt-test',
       language: 'ko'
-    });
+    }));
     expect(mockGenerateTagNotes).toHaveBeenCalledWith('v1.3.0', '- feat: add feature\n- fix: bug fix', undefined, null, null);
     expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.3.0', '- Added feature\n- Fixed bug');
     expect(GitService.pushTag).not.toHaveBeenCalled();
@@ -186,12 +186,12 @@ describe('TagCommand', () => {
     await (command as any).handleTag('v1.1.0', {});
 
     expect(GitService.getLatestTag).toHaveBeenCalled();
-    expect(AIService).toHaveBeenCalledWith({
+    expect(AIService).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: 'env-key',
       baseURL: 'https://env.test',
       model: 'env-model',
       language: 'ko'
-    });
+    }));
     expect(GitService.createAnnotatedTag).toHaveBeenCalledWith('v1.1.0', '- Updated dependencies');
     expect(GitService.pushTag).not.toHaveBeenCalled();
   });

@@ -1,6 +1,5 @@
 import { CommitCommand } from '../commands/commit';
 import { GitService } from '../commands/git';
-import { AIService } from '../commands/ai';
 import { ConfigService } from '../commands/config';
 import readline from 'readline';
 

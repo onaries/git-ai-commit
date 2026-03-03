@@ -66,9 +66,9 @@ export class ConfigService {
       }
 
       const parsed = JSON.parse(raw);
-      const { $schema, ...config } = typeof parsed === 'object' && parsed !== null ? parsed : {} as Record<string, unknown>;
+      const { ...config } = typeof parsed === 'object' && parsed !== null ? parsed : {} as Record<string, unknown>;
       return config as StoredConfig;
-    } catch (error) {
+    } catch {
       console.warn('Warning: Failed to read configuration file. Falling back to environment variables.');
       return {};
     }
