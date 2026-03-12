@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.4 - 2026-03-12
+
+### New Features
+- Auto re-stage and retry commit when pre-commit hook modifies files (e.g., formatter like ruff)
+
+### CI/CD
+- Switch auto-tag push authentication from GITHUB_TOKEN to PAT (fixes publish workflow not triggering)
+
 ## 1.2.3 - 2026-03-03
 
 ### New Features
