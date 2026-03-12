@@ -17,11 +17,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Configure git user
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
       - name: Use Node.js
         uses: actions/setup-node@v4
         with:
@@ -55,11 +50,30 @@ jobs:
         id: notes
         run: |
           PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          TAG="${{ steps.version.outputs.tag }}"
+
+          set +e
           if [ -n "$PREV_TAG" ]; then
-            NOTES=$(node dist/index.js tag ${{ steps.version.outputs.tag }} --base-tag "$PREV_TAG" --message-only)
+            NOTES=$(node dist/index.js tag "$TAG" --base-tag "$PREV_TAG" --message-only)
           else
-            NOTES=$(node dist/index.js tag ${{ steps.version.outputs.tag }} --message-only)
+            NOTES=$(node dist/index.js tag "$TAG" --message-only)
           fi
+          STATUS=$?
+          set -e
+
+          if [ $STATUS -ne 0 ] || [ -z "$NOTES" ]; then
+            echo "AI release notes generation failed. Falling back to git log summary."
+            if [ -n "$PREV_TAG" ]; then
+              NOTES=$(git log --pretty=format:'- %s' "$PREV_TAG"..HEAD)
+            else
+              NOTES=$(git log --pretty=format:'- %s' -n 20)
+            fi
+          fi
+
+          if [ -z "$NOTES" ]; then
+            NOTES="- Release $TAG"
+          fi
+
           echo "NOTES<<EOF" >> $GITHUB_OUTPUT
           echo "$NOTES" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
@@ -68,8 +82,29 @@ jobs:
           AI_MODE: gemini
           AI_MODEL: ${{ vars.AI_MODEL || 'gemini-3-flash-preview' }}
 
-      - name: Create annotated tag
+      - name: Create annotated tag with gh
         if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN }}
         run: |
-          git tag -a ${{ steps.version.outputs.tag }} -m "${{ steps.notes.outputs.NOTES }}"
-          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git ${{ steps.version.outputs.tag }}
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::PAT_TOKEN secret is required. GITHUB_TOKEN-created tags do not trigger downstream tag workflows."
+            exit 1
+          fi
+
+          TAG="${{ steps.version.outputs.tag }}"
+          TARGET_SHA="${{ github.event.pull_request.merge_commit_sha || github.sha }}"
+          NOTES="${{ steps.notes.outputs.NOTES }}"
+
+          TAG_OBJECT_SHA=$(gh api repos/${{ github.repository }}/git/tags \
+            -f tag="$TAG" \
+            -f message="$NOTES" \
+            -f object="$TARGET_SHA" \
+            -f type=commit \
+            --jq '.sha')
+
+          gh api repos/${{ github.repository }}/git/refs \
+            -f ref="refs/tags/$TAG" \
+            -f sha="$TAG_OBJECT_SHA"
+
+          echo "Created and pushed annotated tag: $TAG"
