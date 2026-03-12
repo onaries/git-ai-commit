@@ -4,6 +4,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -15,6 +18,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
         run: npm ci
@@ -30,3 +34,81 @@ jobs:
 
       - name: Test
         run: npm test
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Scan PR diff for suspicious additions
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          git fetch origin "$BASE_REF" --depth=1
+          python3 <<'PY'
+          import os
+          import re
+          import subprocess
+          import sys
+
+          base_ref = os.environ['BASE_REF']
+          diff = subprocess.check_output(
+              ['git', 'diff', '--unified=0', f'origin/{base_ref}...HEAD'],
+              text=True,
+          )
+
+          rules = [
+              ('dynamic execution', re.compile(r'\b(?:eval\s*\(|new\s+Function\s*\(|Function\s*\(|vm\.(?:runInNewContext|runInContext|runInThisContext)\s*\()')),
+              ('shell download and execute', re.compile(r'\b(?:curl|wget)\b.*\|\s*(?:sh|bash)\b')),
+              ('hardcoded secret', re.compile(r'(?:AKIA[0-9A-Z]{16}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AIza[0-9A-Za-z\-_]{20,}|sk_(?:live|test)_[A-Za-z0-9]{16,}|-----BEGIN [A-Z ]+ PRIVATE KEY-----)')),
+              ('suspicious encoded payload', re.compile(r'[A-Za-z0-9+/]{120,}={0,2}')),
+          ]
+
+          findings = []
+          current_file = 'unknown'
+
+          def should_skip_line(file_path, line):
+              if file_path != '.github/workflows/ci.yml':
+                  return False
+              return 're.compile(' in line or 'pattern.search(' in line
+
+          for raw_line in diff.splitlines():
+              if raw_line.startswith('diff --git '):
+                  parts = raw_line.split()
+                  current_file = parts[3][2:] if len(parts) >= 4 and parts[3].startswith('b/') else 'unknown'
+                  continue
+
+              if not raw_line.startswith('+') or raw_line.startswith('+++'):
+                  continue
+
+              line = raw_line[1:].strip()
+              if should_skip_line(current_file, line):
+                  continue
+
+              for label, pattern in rules:
+                  if pattern.search(line):
+                      findings.append((label, current_file, line[:200]))
+
+          if findings:
+              print('Suspicious additions detected in this PR:')
+              for label, file_path, snippet in findings:
+                  print(f'- {label} in {file_path}: {snippet}')
+              sys.exit(1)
+
+          print('No suspicious additions detected in PR diff.')
+          PY
