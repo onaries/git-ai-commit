@@ -10,7 +10,9 @@ jest.mock('../commands/git', () => ({
     getStagedDiff: jest.fn(),
     getStagedStat: jest.fn().mockResolvedValue(''),
     createCommit: jest.fn(),
-    push: jest.fn()
+    push: jest.fn(),
+    hasModifiedFiles: jest.fn().mockResolvedValue(false),
+    restageModifiedFiles: jest.fn().mockResolvedValue(true)
   }
 }));
 
@@ -122,6 +124,7 @@ describe('CommitCommand', () => {
 
   it('should exit when commit creation fails', async () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(false);
+    (GitService.hasModifiedFiles as jest.Mock).mockResolvedValue(false);
 
     const command = createCommand();
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
@@ -129,6 +132,39 @@ describe('CommitCommand', () => {
     await (command as any).handleCommit({});
 
     expect(GitService.createCommit).toHaveBeenCalledWith('feat: test commit');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it('should re-stage and retry when pre-commit hook modifies files', async () => {
+    (GitService.createCommit as jest.Mock)
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    (GitService.hasModifiedFiles as jest.Mock).mockResolvedValue(true);
+    (GitService.restageModifiedFiles as jest.Mock).mockResolvedValue(true);
+
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({});
+
+    expect(GitService.createCommit).toHaveBeenCalledTimes(2);
+    expect(GitService.createCommit).toHaveBeenNthCalledWith(1, 'feat: test commit');
+    expect(GitService.createCommit).toHaveBeenNthCalledWith(2, 'feat: test commit', true);
+    expect(GitService.restageModifiedFiles).toHaveBeenCalled();
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it('should exit when retry after re-stage also fails', async () => {
+    (GitService.createCommit as jest.Mock).mockResolvedValue(false);
+    (GitService.hasModifiedFiles as jest.Mock).mockResolvedValue(true);
+    (GitService.restageModifiedFiles as jest.Mock).mockResolvedValue(true);
+
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+
+    await (command as any).handleCommit({});
+
+    expect(GitService.createCommit).toHaveBeenCalledTimes(2);
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 

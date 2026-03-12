@@ -165,12 +165,34 @@ export class GitService {
     }
   }
   
-  static async createCommit(message: string): Promise<boolean> {
+  static async createCommit(message: string, noVerify = false): Promise<boolean> {
     try {
-      await execFileAsync('git', ['commit', '-m', message]);
+      const args = ['commit', '-m', message];
+      if (noVerify) {
+        args.push('--no-verify');
+      }
+      await execFileAsync('git', args);
       return true;
     } catch (error) {
       console.error('Failed to create commit:', error instanceof Error ? error.message : error);
+      return false;
+    }
+  }
+
+  static async hasModifiedFiles(): Promise<boolean> {
+    try {
+      const { stdout } = await execFileAsync('git', ['diff', '--name-only']);
+      return stdout.trim().length > 0;
+    } catch {
+      return false;
+    }
+  }
+
+  static async restageModifiedFiles(): Promise<boolean> {
+    try {
+      await execFileAsync('git', ['add', '-u']);
+      return true;
+    } catch {
       return false;
     }
   }
