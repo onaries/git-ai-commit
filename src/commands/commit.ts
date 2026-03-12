@@ -259,7 +259,16 @@ export class CommitCommand {
       }
 
       console.log("\nCreating commit...");
-      const commitSuccess = await GitService.createCommit(aiResult.message!);
+      let commitSuccess = await GitService.createCommit(aiResult.message!);
+
+      if (!commitSuccess) {
+        const hasModified = await GitService.hasModifiedFiles();
+        if (hasModified) {
+          console.log("\n🔄 Pre-commit hook modified files (formatter). Re-staging and retrying...");
+          await GitService.restageModifiedFiles();
+          commitSuccess = await GitService.createCommit(aiResult.message!, true);
+        }
+      }
 
       if (commitSuccess) {
         console.log("✅ Commit created successfully!");

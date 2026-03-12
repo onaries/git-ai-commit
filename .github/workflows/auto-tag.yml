@@ -72,6 +72,4 @@ jobs:
         if: steps.check.outputs.exists == 'false'
         run: |
           git tag -a ${{ steps.version.outputs.tag }} -m "${{ steps.notes.outputs.NOTES }}"
-          git push origin ${{ steps.version.outputs.tag }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git push https://x-access-token:${{ secrets.PAT_TOKEN }}@github.com/${{ github.repository }}.git ${{ steps.version.outputs.tag }}
