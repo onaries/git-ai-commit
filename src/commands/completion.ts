@@ -40,7 +40,7 @@ _git_ai_commit() {
 
     # Command-specific options
     local commit_opts="-k --api-key -b --base-url --model -m --message-only -p --push --prompt --no-verify"
-    local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --reasoning-effort --mode --co-author --no-co-author"
+    local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --fallback-mode --fallback-api-key --fallback-base-url --provider-priority --reasoning-effort --mode --co-author --no-co-author"
     local pr_opts="--base --compare -k --api-key -b --base-url --model"
     local tag_opts="-k --api-key --base-url -m --model --message -t --base-tag --prompt"
     local history_opts="-l --limit --json --clear"
@@ -74,7 +74,15 @@ _git_ai_commit() {
                     COMPREPLY=( $(compgen -W "custom openai gemini" -- "\${cur}") )
                     return
                     ;;
-                -k|--api-key|-b|--base-url|-m|--model|--co-author)
+                --fallback-mode)
+                    COMPREPLY=( $(compgen -W "custom openai gemini" -- "\${cur}") )
+                    return
+                    ;;
+                --provider-priority)
+                    COMPREPLY=( $(compgen -W "primary-first fallback-first" -- "\${cur}") )
+                    return
+                    ;;
+                -k|--api-key|-b|--base-url|-m|--model|--fallback-model|--fallback-api-key|--fallback-base-url|--co-author)
                     return
                     ;;
             esac
@@ -194,6 +202,11 @@ _git-ai-commit() {
                         '--base-url[Persist API base URL]:url:' \\
                         '-m[Persist default AI model]:model:' \\
                         '--model[Persist default AI model]:model:' \\
+                        '--fallback-model[Persist fallback AI model]:model:' \\
+                        '--fallback-mode[Persist fallback AI mode]:mode:(custom openai gemini)' \\
+                        '--fallback-api-key[Persist fallback API key]:key:' \\
+                        '--fallback-base-url[Persist fallback API base URL]:url:' \\
+                        '--provider-priority[Persist provider priority]:priority:(primary-first fallback-first)' \\
                         '--mode[Persist AI mode]:mode:(custom openai gemini)' \\
                         '--co-author[Set Co-authored-by trailer for commits]:author:' \\
                         '--no-co-author[Remove Co-authored-by trailer]'

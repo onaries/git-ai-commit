@@ -4,7 +4,7 @@ import { GoogleGenAI } from '@google/genai';
 import { generateCommitPrompt } from '../prompts/commit';
 import { generateTagPrompt } from '../prompts/tag';
 import { generatePullRequestPrompt } from '../prompts/pr';
-import { SupportedLanguage, AIMode } from './config';
+import { SupportedLanguage, AIMode, ProviderPriority } from './config';
 
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
@@ -13,6 +13,10 @@ export interface AIServiceConfig {
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
+  fallbackMode?: AIMode;
+  fallbackApiKey?: string;
+  fallbackBaseURL?: string;
+  providerPriority?: ProviderPriority;
   reasoningEffort?: ReasoningEffort;
   language?: SupportedLanguage;
   verbose?: boolean;
@@ -38,32 +42,93 @@ export interface PullRequestGenerationResult {
   error?: string;
 }
 
+interface StreamingCompletionOptions {
+  attempt?: number;
+  modelOverride?: string;
+  initialResponseTimeoutMs?: number;
+  noResponseRetryAttempt?: number;
+}
+
+interface InitialResponseTimeoutState {
+  controller?: AbortController;
+  clear: () => void;
+  markResponseStarted: () => void;
+  didTimeout: () => boolean;
+}
+
 export class AIService {
   private openai: OpenAI | null = null;
   private gemini: GoogleGenAI | null = null;
+  private apiKey: string;
+  private baseURL?: string;
   private mode: AIMode;
   private model: string;
   private fallbackModel?: string;
+  private fallbackMode?: AIMode;
+  private fallbackApiKey?: string;
+  private fallbackBaseURL?: string;
+  private providerPriority: ProviderPriority;
   private reasoningEffort?: ReasoningEffort;
   private language: SupportedLanguage;
   private verbose: boolean;
   private maxCompletionTokens?: number;
+  private readonly initialResponseTimeoutMs = 5000;
+  private readonly maxNoResponseRetries = 3;
 
-  constructor(config: AIServiceConfig) {
-    this.mode = config.mode || 'custom';
-
-    if (this.mode === 'gemini') {
-      this.gemini = new GoogleGenAI({ apiKey: config.apiKey });
-      this.model = config.model || 'gemini-3-flash-preview';
-    } else {
-      this.openai = new OpenAI({
-        apiKey: config.apiKey,
-        baseURL: config.baseURL
-      });
-      this.model = config.model || 'zai-org/GLM-4.5-FP8';
+  private resolveDefaultModel(mode: AIMode, model?: string): string {
+    if (model) {
+      return model;
     }
 
-    this.fallbackModel = config.fallbackModel;
+    return mode === 'gemini' ? 'gemini-3-flash-preview' : 'zai-org/GLM-4.5-FP8';
+  }
+
+  constructor(config: AIServiceConfig) {
+    const primaryMode = config.mode || 'custom';
+    const primaryConfig = {
+      apiKey: config.apiKey,
+      baseURL: primaryMode === 'gemini' ? undefined : config.baseURL,
+      mode: primaryMode,
+      model: this.resolveDefaultModel(primaryMode, config.model),
+    };
+    const configuredFallbackMode = config.fallbackMode ?? primaryMode;
+    const fallbackConfig = config.fallbackModel
+      ? {
+        apiKey: config.fallbackApiKey ?? config.apiKey,
+        baseURL: configuredFallbackMode === 'gemini'
+          ? undefined
+          : (config.fallbackBaseURL ?? (configuredFallbackMode === primaryMode ? primaryConfig.baseURL : undefined)),
+        mode: configuredFallbackMode,
+        model: this.resolveDefaultModel(configuredFallbackMode, config.fallbackModel),
+      }
+      : undefined;
+
+    this.providerPriority = config.providerPriority ?? 'primary-first';
+    const activeConfig = this.providerPriority === 'fallback-first' && fallbackConfig
+      ? fallbackConfig
+      : primaryConfig;
+    const secondaryConfig = this.providerPriority === 'fallback-first' && fallbackConfig
+      ? primaryConfig
+      : fallbackConfig;
+
+    this.apiKey = activeConfig.apiKey;
+    this.baseURL = activeConfig.baseURL;
+    this.mode = activeConfig.mode;
+    this.model = activeConfig.model;
+
+    if (this.mode === 'gemini') {
+      this.gemini = new GoogleGenAI({ apiKey: this.apiKey });
+    } else {
+      this.openai = new OpenAI({
+        apiKey: this.apiKey,
+        baseURL: this.baseURL
+      });
+    }
+
+    this.fallbackModel = secondaryConfig?.model;
+    this.fallbackMode = secondaryConfig?.mode;
+    this.fallbackApiKey = secondaryConfig?.apiKey;
+    this.fallbackBaseURL = secondaryConfig?.baseURL;
     this.reasoningEffort = config.reasoningEffort;
     this.language = config.language || 'ko';
     this.verbose = config.verbose ?? true;
@@ -184,15 +249,122 @@ export class AIService {
     return `${seconds}s`;
   }
 
+  private buildNoResponseError(timeoutMs?: number): Error {
+    const timeoutLabel = this.formatElapsed(timeoutMs ?? 0);
+    return new Error(
+      `No response received within ${timeoutLabel} after ${this.maxNoResponseRetries + 1} attempts`
+    );
+  }
+
+  private getErrorMessage(error: unknown, fallbackMessage: string): string {
+    return error instanceof Error ? error.message : fallbackMessage;
+  }
+
+  private hasFallbackTarget(currentModel: string): boolean {
+    if (!this.fallbackModel || !this.fallbackApiKey) {
+      return false;
+    }
+
+    const fallbackMode = this.fallbackMode ?? this.mode;
+    const fallbackBaseURL = fallbackMode === 'gemini' ? undefined : this.fallbackBaseURL;
+
+    return !(
+      fallbackMode === this.mode &&
+      this.fallbackModel === currentModel &&
+      this.fallbackApiKey === this.apiKey &&
+      fallbackBaseURL === this.baseURL
+    );
+  }
+
+  private async tryProviderFallback(
+    request: ChatCompletionCreateParamsNonStreaming,
+    currentModel: string,
+    reason: string,
+    options: StreamingCompletionOptions
+  ): Promise<string | null> {
+    if (!this.hasFallbackTarget(currentModel) || !this.fallbackModel || !this.fallbackApiKey) {
+      return null;
+    }
+
+    const fallbackMode = this.fallbackMode ?? this.mode;
+    const fallbackBaseURL = fallbackMode === 'gemini' ? undefined : this.fallbackBaseURL;
+    this.debugLog(`${reason}. Retrying with fallback provider ${fallbackMode} (${this.fallbackModel}).`);
+    if (this.verbose) {
+      process.stdout.write(`\r⏳ ${reason}. Retrying with fallback provider ${fallbackMode} (${this.fallbackModel})...`);
+    }
+
+    const fallbackService = new AIService({
+      apiKey: this.fallbackApiKey,
+      baseURL: fallbackBaseURL,
+      model: this.fallbackModel,
+      reasoningEffort: this.reasoningEffort,
+      language: this.language,
+      verbose: this.verbose,
+      mode: fallbackMode,
+      maxCompletionTokens: this.maxCompletionTokens,
+    });
+
+    return await fallbackService.createStreamingCompletion(
+      { ...request, model: this.fallbackModel },
+      {
+        initialResponseTimeoutMs: options.initialResponseTimeoutMs
+      }
+    );
+  }
+
+  private createInitialResponseTimeout(timeoutMs?: number): InitialResponseTimeoutState {
+    if (!timeoutMs || timeoutMs <= 0) {
+      return {
+        clear: () => undefined,
+        markResponseStarted: () => undefined,
+        didTimeout: () => false
+      };
+    }
+
+    const controller = new AbortController();
+    let timedOut = false;
+    let cleared = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+
+    timer.unref?.();
+
+    const clear = () => {
+      if (cleared) {
+        return;
+      }
+      cleared = true;
+      clearTimeout(timer);
+    };
+
+    return {
+      controller,
+      clear,
+      markResponseStarted: clear,
+      didTimeout: () => timedOut
+    };
+  }
+
   private async createGeminiStreamingCompletion(
     request: ChatCompletionCreateParamsNonStreaming,
-    attempt = 0
+    options: StreamingCompletionOptions = {}
   ): Promise<string> {
     if (!this.gemini) throw new Error('Gemini client not initialized');
+
+    const {
+      attempt = 0,
+      modelOverride,
+      initialResponseTimeoutMs,
+      noResponseRetryAttempt = 0
+    } = options;
 
     let waitingTimer: ReturnType<typeof setInterval> | null = null;
     const startTime = Date.now();
     let frameIndex = 0;
+    const currentModel = modelOverride || this.model;
+    const initialResponseTimeout = this.createInitialResponseTimeout(initialResponseTimeoutMs);
 
     try {
       if (this.verbose) {
@@ -215,11 +387,14 @@ export class AIService {
         ?? 3000;
 
       const stream = await this.gemini.models.generateContentStream({
-        model: this.model,
+        model: currentModel,
         contents,
         config: {
           ...(systemMessage ? { systemInstruction: typeof systemMessage.content === 'string' ? systemMessage.content : '' } : {}),
           maxOutputTokens: maxTokens,
+          ...(initialResponseTimeout.controller
+            ? { abortSignal: initialResponseTimeout.controller.signal }
+            : {})
         }
       });
 
@@ -228,6 +403,8 @@ export class AIService {
       let lastChunkUsage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
 
       for await (const chunk of stream) {
+        initialResponseTimeout.markResponseStarted();
+
         if (chunk.usageMetadata) {
           lastChunkUsage = chunk.usageMetadata;
         }
@@ -254,6 +431,7 @@ export class AIService {
         clearInterval(waitingTimer);
         waitingTimer = null;
       }
+      initialResponseTimeout.clear();
 
       if (this.verbose) {
         const elapsed = this.formatElapsed(Date.now() - startTime);
@@ -268,12 +446,40 @@ export class AIService {
 
       return contentChunks.join('');
     } catch (error) {
+      initialResponseTimeout.clear();
+
       if (waitingTimer) {
         clearInterval(waitingTimer);
         waitingTimer = null;
       }
       if (this.verbose) {
         process.stdout.write('\n');
+      }
+      if (initialResponseTimeout.didTimeout() && noResponseRetryAttempt < this.maxNoResponseRetries) {
+        const nextNoResponseRetry = noResponseRetryAttempt + 1;
+        const timeoutLabel = this.formatElapsed(initialResponseTimeoutMs ?? 0);
+        this.debugLog(
+          `No response within ${initialResponseTimeoutMs}ms. Retrying... (${nextNoResponseRetry}/${this.maxNoResponseRetries})`
+        );
+        if (this.verbose) {
+          process.stdout.write(`\r⏳ No response for ${timeoutLabel}. Retrying...`);
+        }
+        return await this.createGeminiStreamingCompletion(request, {
+          attempt,
+          modelOverride,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt: nextNoResponseRetry
+        });
+      }
+      if (initialResponseTimeout.didTimeout()) {
+        const timeoutReason = `No response within ${this.formatElapsed(initialResponseTimeoutMs ?? 0)}`;
+        const fallbackContent = await this.tryProviderFallback(request, currentModel, timeoutReason, {
+          initialResponseTimeoutMs
+        });
+        if (fallbackContent !== null) {
+          return fallbackContent;
+        }
+        throw this.buildNoResponseError(initialResponseTimeoutMs);
       }
       if (attempt < 3 && this.isServerError(error)) {
         const waitTime = (attempt + 1) * 2000;
@@ -282,7 +488,23 @@ export class AIService {
           process.stdout.write(`\r⏳ Server error. Retrying in ${waitTime / 1000}s...`);
         }
         await this.delay(waitTime);
-        return await this.createGeminiStreamingCompletion(request, attempt + 1);
+        return await this.createGeminiStreamingCompletion(request, {
+          attempt: attempt + 1,
+          modelOverride,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt
+        });
+      }
+      if (this.isServerError(error)) {
+        const fallbackContent = await this.tryProviderFallback(
+          request,
+          currentModel,
+          `Server error (${(error as { status?: number }).status})`,
+          { initialResponseTimeoutMs }
+        );
+        if (fallbackContent !== null) {
+          return fallbackContent;
+        }
       }
       throw error;
     }
@@ -290,15 +512,22 @@ export class AIService {
 
   private async createStreamingCompletion(
     request: ChatCompletionCreateParamsNonStreaming,
-    attempt = 0
+    options: StreamingCompletionOptions = {}
   ): Promise<string> {
+    const {
+      attempt = 0,
+      initialResponseTimeoutMs,
+      noResponseRetryAttempt = 0
+    } = options;
+
     if (this.mode === 'gemini') {
-      return this.createGeminiStreamingCompletion(request, attempt);
+      return this.createGeminiStreamingCompletion(request, options);
     }
 
     if (!this.openai) throw new Error('OpenAI client not initialized');
 
     let waitingTimer: ReturnType<typeof setInterval> | null = null;
+    const initialResponseTimeout = this.createInitialResponseTimeout(initialResponseTimeoutMs);
 
     try {
       const startTime = Date.now();
@@ -319,7 +548,11 @@ export class AIService {
         ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {})
       };
 
-      const stream = await this.openai.chat.completions.create(streamParams);
+      const stream = initialResponseTimeout.controller
+        ? await this.openai.chat.completions.create(streamParams, {
+          signal: initialResponseTimeout.controller.signal
+        })
+        : await this.openai.chat.completions.create(streamParams);
 
       const contentChunks: string[] = [];
       let reasoningChunks = 0;
@@ -337,6 +570,8 @@ export class AIService {
       let finalUsage: StreamUsage | null = null;
 
       for await (const chunk of stream) {
+        initialResponseTimeout.markResponseStarted();
+
         const chunkUsage = (chunk as unknown as { usage?: StreamUsage }).usage;
         if (chunkUsage) {
           finalUsage = chunkUsage;
@@ -388,6 +623,7 @@ export class AIService {
         clearInterval(waitingTimer);
         waitingTimer = null;
       }
+      initialResponseTimeout.clear();
 
       if (this.verbose) {
         const elapsed = this.formatElapsed(Date.now() - startTime);
@@ -418,6 +654,8 @@ export class AIService {
 
       return contentChunks.join('');
     } catch (error) {
+      initialResponseTimeout.clear();
+
       if (waitingTimer) {
         clearInterval(waitingTimer);
         waitingTimer = null;
@@ -426,22 +664,60 @@ export class AIService {
         process.stdout.write('\n');
       }
 
+      if (initialResponseTimeout.didTimeout() && noResponseRetryAttempt < this.maxNoResponseRetries) {
+        const nextNoResponseRetry = noResponseRetryAttempt + 1;
+        const timeoutLabel = this.formatElapsed(initialResponseTimeoutMs ?? 0);
+        this.debugLog(
+          `No response within ${initialResponseTimeoutMs}ms. Retrying... (${nextNoResponseRetry}/${this.maxNoResponseRetries})`
+        );
+        if (this.verbose) {
+          process.stdout.write(`\r⏳ No response for ${timeoutLabel}. Retrying...`);
+        }
+        return await this.createStreamingCompletion(request, {
+          attempt,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt: nextNoResponseRetry
+        });
+      }
+      if (initialResponseTimeout.didTimeout()) {
+        const timeoutReason = `No response within ${this.formatElapsed(initialResponseTimeoutMs ?? 0)}`;
+        const fallbackContent = await this.tryProviderFallback(request, request.model, timeoutReason, {
+          initialResponseTimeoutMs
+        });
+        if (fallbackContent !== null) {
+          return fallbackContent;
+        }
+        throw this.buildNoResponseError(initialResponseTimeoutMs);
+      }
+
       if (attempt < 3 && this.isUnsupportedValueError(error, 'temperature')) {
         const fallbackRequest = this.removeTemperature(request);
         this.debugLog('Retrying without temperature due to unsupported value error.');
-        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
+        return await this.createStreamingCompletion(fallbackRequest, {
+          attempt: attempt + 1,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt
+        });
       }
 
       if (this.isUnsupportedTokenParamError(error, 'max_completion_tokens')) {
         const fallbackRequest = this.swapTokenParam(request, 'max_tokens');
         this.debugLog('Retrying with max_tokens due to unsupported max_completion_tokens error.');
-        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
+        return await this.createStreamingCompletion(fallbackRequest, {
+          attempt: attempt + 1,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt
+        });
       }
 
       if (this.isUnsupportedTokenParamError(error, 'max_tokens')) {
         const fallbackRequest = this.swapTokenParam(request, 'max_completion_tokens');
         this.debugLog('Retrying with max_completion_tokens due to unsupported max_tokens error.');
-        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
+        return await this.createStreamingCompletion(fallbackRequest, {
+          attempt: attempt + 1,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt
+        });
       }
 
       if (attempt < 3 && this.isServerError(error)) {
@@ -451,13 +727,35 @@ export class AIService {
           process.stdout.write(`\r⏳ Server error. Retrying in ${waitTime / 1000}s...`);
         }
         await this.delay(waitTime);
-        return await this.createStreamingCompletion(request, attempt + 1);
+        return await this.createStreamingCompletion(request, {
+          attempt: attempt + 1,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt
+        });
       }
 
-      if (this.isRateLimitError(error) && this.fallbackModel && request.model !== this.fallbackModel) {
-        this.debugLog(`Rate limited (429). Retrying with fallback model: ${this.fallbackModel}`);
-        const fallbackRequest = { ...request, model: this.fallbackModel };
-        return await this.createStreamingCompletion(fallbackRequest, attempt + 1);
+      if (this.isServerError(error)) {
+        const fallbackContent = await this.tryProviderFallback(
+          request,
+          request.model,
+          `Server error (${(error as { status?: number }).status})`,
+          { initialResponseTimeoutMs }
+        );
+        if (fallbackContent !== null) {
+          return fallbackContent;
+        }
+      }
+
+      if (this.isRateLimitError(error)) {
+        const fallbackContent = await this.tryProviderFallback(
+          request,
+          request.model,
+          'Rate limited (429)',
+          { initialResponseTimeoutMs }
+        );
+        if (fallbackContent !== null) {
+          return fallbackContent;
+        }
       }
 
       throw error;
@@ -523,6 +821,8 @@ export class AIService {
           }
         ],
         max_completion_tokens: this.maxCompletionTokens ?? 3000
+      }, {
+        initialResponseTimeoutMs: this.initialResponseTimeoutMs
       });
 
       let finalMessage = content.trim() || null;
@@ -620,10 +920,10 @@ export class AIService {
         message: finalMessage
       };
     } catch (error) {
-      console.error('API Error:', error);
+      const message = this.getErrorMessage(error, 'Failed to generate commit message');
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate commit message'
+        error: message
       };
     }
   }
@@ -667,6 +967,8 @@ export class AIService {
           }
         ],
         max_completion_tokens: this.maxCompletionTokens ?? 3000
+      }, {
+        initialResponseTimeoutMs: this.initialResponseTimeoutMs
       });
 
       const finalNotes = content.trim() || null;
@@ -684,10 +986,10 @@ export class AIService {
         notes: this.cleanMessage(finalNotes.trim())
       };
     } catch (error) {
-      console.error('API Error:', error);
+      const message = this.getErrorMessage(error, 'Failed to generate tag notes');
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate tag notes'
+        error: message
       };
     }
   }
@@ -720,6 +1022,8 @@ export class AIService {
           }
         ],
         max_completion_tokens: this.maxCompletionTokens ?? 4000
+      }, {
+        initialResponseTimeoutMs: this.initialResponseTimeoutMs
       });
 
       const finalMessage = content.trim() || null;
@@ -736,10 +1040,10 @@ export class AIService {
         message: this.cleanMessage(finalMessage.trim())
       };
     } catch (error) {
-      console.error('API Error:', error);
+      const message = this.getErrorMessage(error, 'Failed to generate pull request message');
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Failed to generate pull request message'
+        error: message
       };
     }
   }

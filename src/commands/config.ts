@@ -8,12 +8,17 @@ export type SupportedLanguage = 'ko' | 'en';
 export type ReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
 
 export type AIMode = 'custom' | 'openai' | 'gemini';
+export type ProviderPriority = 'primary-first' | 'fallback-first';
 
 export interface EnvironmentConfig {
   apiKey?: string;
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
+  fallbackMode?: AIMode;
+  fallbackApiKey?: string;
+  fallbackBaseURL?: string;
+  providerPriority: ProviderPriority;
   reasoningEffort?: ReasoningEffort;
   mode: AIMode;
   language: SupportedLanguage;
@@ -27,6 +32,10 @@ interface StoredConfig {
   baseURL?: string;
   model?: string;
   fallbackModel?: string;
+  fallbackMode?: AIMode;
+  fallbackApiKey?: string;
+  fallbackBaseURL?: string;
+  providerPriority?: ProviderPriority | string;
   reasoningEffort?: ReasoningEffort | string;
   mode?: AIMode;
   language?: SupportedLanguage | string;
@@ -37,6 +46,7 @@ interface StoredConfig {
 
 const DEFAULT_MODEL = 'zai-org/GLM-4.5-FP8';
 const DEFAULT_MODE: AIMode = 'custom';
+const DEFAULT_PROVIDER_PRIORITY: ProviderPriority = 'primary-first';
 const DEFAULT_LANGUAGE: SupportedLanguage = 'ko';
 const DEFAULT_AUTO_PUSH = false;
 const DEFAULT_CO_AUTHOR = 'git-ai-commit <git-ai-commit@users.noreply.github.com>';
@@ -103,6 +113,23 @@ export class ConfigService {
     return 'custom';
   }
 
+  private static normalizeOptionalMode(mode?: string): AIMode | undefined {
+    if (!mode) {
+      return undefined;
+    }
+
+    return this.normalizeMode(mode);
+  }
+
+  private static normalizeProviderPriority(priority?: string): ProviderPriority {
+    if (!priority) {
+      return DEFAULT_PROVIDER_PRIORITY;
+    }
+
+    const normalized = priority.toLowerCase();
+    return normalized === 'fallback-first' ? 'fallback-first' : 'primary-first';
+  }
+
   private static resolveEnvConfig(modeOverride?: AIMode): EnvironmentConfig {
     const resolvedMode = this.normalizeMode(modeOverride || process.env.AI_MODE);
 
@@ -128,6 +155,7 @@ export class ConfigService {
       apiKey: apiKey || undefined,
       baseURL: baseURL || undefined,
       model,
+      providerPriority: DEFAULT_PROVIDER_PRIORITY,
       mode: resolvedMode,
       language: DEFAULT_LANGUAGE,
       autoPush: DEFAULT_AUTO_PUSH
@@ -139,10 +167,39 @@ export class ConfigService {
     const envConfig = this.resolveEnvConfig(fileConfig.mode);
 
     const mode = this.normalizeMode(fileConfig.mode || envConfig.mode);
+    const providerPriority = this.normalizeProviderPriority(
+      (fileConfig.providerPriority as string | undefined) || process.env.AI_PROVIDER_PRIORITY
+    );
     const apiKey = fileConfig.apiKey ?? envConfig.apiKey;
     const baseURL = fileConfig.baseURL ?? envConfig.baseURL;
     const model = fileConfig.model ?? envConfig.model ?? DEFAULT_MODEL;
-    const fallbackModel = fileConfig.fallbackModel;
+    const hasFallbackHints =
+      fileConfig.fallbackModel !== undefined ||
+      fileConfig.fallbackMode !== undefined ||
+      fileConfig.fallbackApiKey !== undefined ||
+      fileConfig.fallbackBaseURL !== undefined ||
+      process.env.AI_FALLBACK_MODEL !== undefined ||
+      process.env.AI_FALLBACK_MODE !== undefined ||
+      process.env.AI_FALLBACK_API_KEY !== undefined ||
+      process.env.AI_FALLBACK_BASE_URL !== undefined;
+    const requestedFallbackMode = this.normalizeOptionalMode(fileConfig.fallbackMode || process.env.AI_FALLBACK_MODE);
+    const fallbackMode = hasFallbackHints ? (requestedFallbackMode ?? mode) : undefined;
+    const fallbackEnvConfig = fallbackMode ? this.resolveEnvConfig(fallbackMode) : undefined;
+    const fallbackModel = hasFallbackHints
+      ? fileConfig.fallbackModel
+        ?? process.env.AI_FALLBACK_MODEL
+        ?? fallbackEnvConfig?.model
+      : undefined;
+    const fallbackApiKey = hasFallbackHints
+      ? fileConfig.fallbackApiKey
+        ?? process.env.AI_FALLBACK_API_KEY
+        ?? fallbackEnvConfig?.apiKey
+      : undefined;
+    const fallbackBaseURL = hasFallbackHints
+      ? fileConfig.fallbackBaseURL
+        ?? process.env.AI_FALLBACK_BASE_URL
+        ?? fallbackEnvConfig?.baseURL
+      : undefined;
     const reasoningEffort = this.normalizeReasoningEffort(fileConfig.reasoningEffort);
     const language = this.normalizeLanguage(fileConfig.language ?? envConfig.language);
     const autoPush = typeof fileConfig.autoPush === 'boolean' ? fileConfig.autoPush : envConfig.autoPush;
@@ -155,6 +212,10 @@ export class ConfigService {
       baseURL,
       model,
       fallbackModel,
+      fallbackMode,
+      fallbackApiKey,
+      fallbackBaseURL,
+      providerPriority,
       reasoningEffort,
       mode,
       language,
@@ -189,12 +250,24 @@ export class ConfigService {
       next.mode = this.normalizeMode(updates.mode);
     }
 
+    if (updates.fallbackMode !== undefined) {
+      next.fallbackMode = this.normalizeOptionalMode(updates.fallbackMode);
+    }
+
+    if (updates.providerPriority !== undefined) {
+      next.providerPriority = this.normalizeProviderPriority(updates.providerPriority as string);
+    }
+
     if (next.model === DEFAULT_MODEL) {
       delete next.model;
     }
 
     if (next.mode === DEFAULT_MODE) {
       delete next.mode;
+    }
+
+    if (next.providerPriority === DEFAULT_PROVIDER_PRIORITY) {
+      delete next.providerPriority;
     }
 
     // coAuthor: false means explicitly disabled — persist it so getConfig() sees it

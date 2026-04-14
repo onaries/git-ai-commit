@@ -96,7 +96,9 @@ describe('AIService', () => {
         max_completion_tokens: 3000,
         stream: true,
         stream_options: { include_usage: true }
-      });
+      }, expect.objectContaining({
+        signal: expect.any(Object)
+      }));
     });
 
     it('should return error when API returns no message', async () => {
@@ -174,7 +176,9 @@ describe('AIService', () => {
         max_completion_tokens: 3000,
         stream: true,
         stream_options: { include_usage: true }
-      });
+      }, expect.objectContaining({
+        signal: expect.any(Object)
+      }));
 
       expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(2, {
         model: 'gpt-4',
@@ -195,7 +199,9 @@ describe('AIService', () => {
         max_tokens: 3000,
         stream: true,
         stream_options: { include_usage: true }
-      });
+      }, expect.objectContaining({
+        signal: expect.any(Object)
+      }));
     });
 
     it('should strip markdown formatting from commit header', async () => {
@@ -231,6 +237,55 @@ describe('AIService', () => {
 
       expect((aiServiceWithDefaults as any).model).toBe('zai-org/GLM-4.5-FP8');
     });
+
+    it('should retry commit generation up to 3 times when no response arrives within 5 seconds', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const quietService = new AIService({
+          apiKey: 'test-api-key',
+          model: 'gpt-4',
+          verbose: false
+        });
+
+        (mockOpenai.chat.completions.create as jest.Mock)
+          .mockImplementationOnce(async (_request, options?: { signal?: AbortSignal }) => {
+            await new Promise((_, reject) => {
+              options?.signal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockImplementationOnce(async (_request, options?: { signal?: AbortSignal }) => {
+            await new Promise((_, reject) => {
+              options?.signal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockImplementationOnce(async (_request, options?: { signal?: AbortSignal }) => {
+            await new Promise((_, reject) => {
+              options?.signal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockResolvedValueOnce(createMockStream('fix: retry after timeout'));
+
+        const resultPromise = quietService.generateCommitMessage('diff --git a/file.txt b/file.txt');
+
+        await jest.advanceTimersByTimeAsync(15000);
+
+        await expect(resultPromise).resolves.toEqual({
+          success: true,
+          message: 'fix: retry after timeout'
+        });
+
+        expect(mockOpenai.chat.completions.create).toHaveBeenCalledTimes(4);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 
   describe('generatePullRequestMessage', () => {
@@ -264,7 +319,9 @@ describe('AIService', () => {
         max_completion_tokens: 4000,
         stream: true,
         stream_options: { include_usage: true }
-      });
+      }, expect.objectContaining({
+        signal: expect.any(Object)
+      }));
     });
 
     it('should return error when API returns no content', async () => {
@@ -290,6 +347,41 @@ describe('AIService', () => {
         success: false,
         error: 'API failure'
       });
+    });
+
+    it('should retry PR generation once when no response arrives within 5 seconds', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const quietService = new AIService({
+          apiKey: 'test-api-key',
+          model: 'gpt-4',
+          verbose: false
+        });
+
+        (mockOpenai.chat.completions.create as jest.Mock)
+          .mockImplementationOnce(async (_request, options?: { signal?: AbortSignal }) => {
+            await new Promise((_, reject) => {
+              options?.signal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockResolvedValueOnce(createMockStream('PR title\n\n## Summary\n- retry'));
+
+        const resultPromise = quietService.generatePullRequestMessage('main', 'feature/cache', 'diff');
+
+        await jest.advanceTimersByTimeAsync(5000);
+
+        await expect(resultPromise).resolves.toEqual({
+          success: true,
+          message: 'PR title\n\n## Summary\n- retry'
+        });
+
+        expect(mockOpenai.chat.completions.create).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -516,6 +608,73 @@ describe('AIService', () => {
       });
     });
 
+    it('should switch to a gemini fallback provider on 429 rate limit', async () => {
+      const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
+      const generateContentStream = jest.fn().mockResolvedValue(
+        createGeminiMockStream([{ text: 'feat: gemini provider fallback' }])
+      );
+      GoogleGenAI.mockImplementation(() => ({ models: { generateContentStream } }));
+
+      const quietService = new AIService({
+        apiKey: 'test-api-key',
+        model: 'gpt-4',
+        fallbackMode: 'gemini',
+        fallbackModel: 'gemini-2.5-flash',
+        fallbackApiKey: 'gemini-key',
+        verbose: false
+      });
+
+      (mockOpenai.chat.completions.create as jest.Mock)
+        .mockRejectedValueOnce({ status: 429, message: 'Rate limit' });
+
+      const request = {
+        model: 'gpt-4',
+        messages: [{ role: 'user' as const, content: 'test' }],
+        max_completion_tokens: 100
+      };
+
+      const result = await (quietService as any).createStreamingCompletion(request);
+
+      expect(result).toBe('feat: gemini provider fallback');
+      expect(generateContentStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-flash'
+        })
+      );
+    });
+
+    it('should use fallback provider first when providerPriority is fallback-first', async () => {
+      const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
+      const generateContentStream = jest.fn().mockResolvedValue(
+        createGeminiMockStream([{ text: 'feat: fallback-first provider' }])
+      );
+      GoogleGenAI.mockImplementation(() => ({ models: { generateContentStream } }));
+
+      const quietService = new AIService({
+        apiKey: 'test-api-key',
+        model: 'gpt-4',
+        mode: 'openai',
+        fallbackMode: 'gemini',
+        fallbackModel: 'gemini-2.5-flash',
+        fallbackApiKey: 'gemini-key',
+        providerPriority: 'fallback-first',
+        verbose: false
+      });
+
+      const result = await quietService.generateCommitMessage('diff');
+
+      expect(result).toEqual({
+        success: true,
+        message: 'feat: fallback-first provider'
+      });
+      expect(generateContentStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: 'gemini-2.5-flash'
+        })
+      );
+      expect(mockOpenai.chat.completions.create).not.toHaveBeenCalled();
+    });
+
     it('should handle reasoning chunks in stream and still return content', async () => {
       const stream = {
         [Symbol.asyncIterator]: async function* () {
@@ -569,6 +728,74 @@ describe('AIService', () => {
       expect(result).toEqual({ success: true, notes: '## Changes\n- Added feature' });
     });
 
+    it('should retry tag note generation once when no response arrives within 5 seconds', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const quietService = new AIService({
+          apiKey: 'test-api-key',
+          model: 'gpt-4',
+          verbose: false
+        });
+
+        (mockOpenai.chat.completions.create as jest.Mock)
+          .mockImplementationOnce(async (_request, options?: { signal?: AbortSignal }) => {
+            await new Promise((_, reject) => {
+              options?.signal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockResolvedValueOnce(createMockStream('## Changes\n- retry tag notes'));
+
+        const resultPromise = quietService.generateTagNotes('v1.0.0', 'abc123 feat: add feature');
+
+        await jest.advanceTimersByTimeAsync(5000);
+
+        await expect(resultPromise).resolves.toEqual({
+          success: true,
+          notes: '## Changes\n- retry tag notes'
+        });
+
+        expect(mockOpenai.chat.completions.create).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should return a timeout error after exhausting no-response retries', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const quietService = new AIService({
+          apiKey: 'test-api-key',
+          model: 'gpt-4',
+          verbose: false
+        });
+
+        (mockOpenai.chat.completions.create as jest.Mock).mockImplementation(async (_request, options?: { signal?: AbortSignal }) => {
+          await new Promise((_, reject) => {
+            options?.signal?.addEventListener('abort', () => {
+              reject(new Error('Request was aborted.'));
+            }, { once: true });
+          });
+        });
+
+        const resultPromise = quietService.generateTagNotes('v1.0.0', 'abc123 feat: add feature');
+
+        await jest.advanceTimersByTimeAsync(20000);
+
+        await expect(resultPromise).resolves.toEqual({
+          success: false,
+          error: 'No response received within 5s after 4 attempts'
+        });
+
+        expect(mockOpenai.chat.completions.create).toHaveBeenCalledTimes(4);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('should return error when response is empty', async () => {
       const quietService = new AIService({ apiKey: 'test-api-key', model: 'gpt-4', verbose: false });
       (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(createMockStream(null));
@@ -604,6 +831,9 @@ describe('AIService', () => {
             }
           ]
         })
+      , expect.objectContaining({
+        signal: expect.any(Object)
+      })
       );
     });
 
@@ -626,6 +856,9 @@ describe('AIService', () => {
             }
           ]
         })
+      , expect.objectContaining({
+        signal: expect.any(Object)
+      })
       );
     });
 
@@ -645,6 +878,9 @@ describe('AIService', () => {
             expect.any(Object)
           ]
         })
+      , expect.objectContaining({
+        signal: expect.any(Object)
+      })
       );
     });
   });
@@ -730,6 +966,95 @@ describe('AIService', () => {
 
       expect(result).toEqual({ success: true, message: 'feat: done' });
       expect(generateContentStream).toHaveBeenCalledTimes(1);
+    });
+
+    it('should retry gemini commit generation up to 3 times when no response arrives within 5 seconds', async () => {
+      jest.useFakeTimers();
+
+      try {
+        const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
+        const generateContentStream = jest.fn()
+          .mockImplementationOnce(async ({ config }: { config?: { abortSignal?: AbortSignal } }) => {
+            await new Promise((_, reject) => {
+              config?.abortSignal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockImplementationOnce(async ({ config }: { config?: { abortSignal?: AbortSignal } }) => {
+            await new Promise((_, reject) => {
+              config?.abortSignal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockImplementationOnce(async ({ config }: { config?: { abortSignal?: AbortSignal } }) => {
+            await new Promise((_, reject) => {
+              config?.abortSignal?.addEventListener('abort', () => {
+                reject(new Error('Request was aborted.'));
+              }, { once: true });
+            });
+          })
+          .mockResolvedValueOnce(createGeminiMockStream([{ text: 'feat: retry gemini response' }]));
+        GoogleGenAI.mockImplementation(() => ({ models: { generateContentStream } }));
+
+        const geminiService = new AIService({ apiKey: 'gem-key', mode: 'gemini', model: 'gem-model', verbose: false });
+        const resultPromise = geminiService.generateCommitMessage('diff');
+
+        await jest.advanceTimersByTimeAsync(15000);
+
+        await expect(resultPromise).resolves.toEqual({
+          success: true,
+          message: 'feat: retry gemini response'
+        });
+
+        expect(generateContentStream).toHaveBeenCalledTimes(4);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
+    it('should switch to an openai fallback provider after gemini server errors', async () => {
+      const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
+      const generateContentStream = jest.fn().mockRejectedValue({ status: 503, message: 'Server error' });
+      GoogleGenAI.mockImplementation(() => ({ models: { generateContentStream } }));
+
+      const fallbackOpenAI = {
+        chat: {
+          completions: {
+            create: jest.fn().mockResolvedValue(createMockStream('feat: openai provider fallback'))
+          }
+        }
+      } as any;
+      MockedOpenAI.mockImplementation(() => fallbackOpenAI);
+
+      const geminiService = new AIService({
+        apiKey: 'gem-key',
+        mode: 'gemini',
+        model: 'gem-model',
+        fallbackMode: 'openai',
+        fallbackModel: 'gpt-4o-mini',
+        fallbackApiKey: 'openai-key',
+        fallbackBaseURL: 'https://openai.fallback.test',
+        verbose: false
+      });
+
+      const result = await (geminiService as any).createGeminiStreamingCompletion({
+        model: 'gem-model',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_completion_tokens: 123
+      }, {
+        attempt: 3
+      });
+
+      expect(result).toBe('feat: openai provider fallback');
+      expect(fallbackOpenAI.chat.completions.create).toHaveBeenCalledWith({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: 'hello' }],
+        max_completion_tokens: 123,
+        stream: true,
+        stream_options: { include_usage: true }
+      });
     });
 
     it('createStreamingCompletion should dispatch to gemini implementation', async () => {

@@ -44,6 +44,10 @@ describe('ConfigService', () => {
         baseURL: 'https://api.test.com',
         model: 'gpt-4',
         fallbackModel: undefined,
+        fallbackMode: undefined,
+        fallbackApiKey: undefined,
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
         reasoningEffort: undefined,
         mode: 'custom',
         language: 'ko',
@@ -64,6 +68,10 @@ describe('ConfigService', () => {
         baseURL: 'https://fallback.test.com',
         model: 'claude-3',
         fallbackModel: undefined,
+        fallbackMode: undefined,
+        fallbackApiKey: undefined,
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
         reasoningEffort: undefined,
         mode: 'custom',
         language: 'ko',
@@ -85,6 +93,10 @@ describe('ConfigService', () => {
         baseURL: 'ai-url',
         model: 'zai-org/GLM-4.5-FP8',
         fallbackModel: undefined,
+        fallbackMode: undefined,
+        fallbackApiKey: undefined,
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
         reasoningEffort: undefined,
         mode: 'custom',
         language: 'ko',
@@ -109,6 +121,10 @@ describe('ConfigService', () => {
         baseURL: 'openai-url',
         model: 'gpt-4',
         fallbackModel: undefined,
+        fallbackMode: undefined,
+        fallbackApiKey: undefined,
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
         reasoningEffort: undefined,
         mode: 'openai',
         language: 'ko',
@@ -130,6 +146,10 @@ describe('ConfigService', () => {
         baseURL: 'ai-url',
         model: 'claude-3',
         fallbackModel: undefined,
+        fallbackMode: undefined,
+        fallbackApiKey: undefined,
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
         reasoningEffort: undefined,
         mode: 'openai',
         language: 'ko',
@@ -170,12 +190,76 @@ describe('ConfigService', () => {
         baseURL: 'https://file.example',
         model: 'file-model',
         fallbackModel: undefined,
+        fallbackMode: undefined,
+        fallbackApiKey: undefined,
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
         reasoningEffort: undefined,
         mode: 'openai',
         language: 'en',
         autoPush: true,
         coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
       });
+    });
+
+    it('resolves fallback provider settings from fallback env vars and provider defaults', () => {
+      process.env.AI_MODE = 'openai';
+      process.env.OPENAI_API_KEY = 'openai-key';
+      process.env.OPENAI_BASE_URL = 'https://openai.example';
+      process.env.OPENAI_MODEL = 'gpt-4o-mini';
+      process.env.AI_FALLBACK_MODE = 'gemini';
+      process.env.GEMINI_API_KEY = 'gemini-key';
+      process.env.AI_FALLBACK_MODEL = 'gemini-2.5-flash';
+
+      const config = ConfigService.getConfig();
+
+      expect(config).toEqual({
+        apiKey: 'openai-key',
+        baseURL: 'https://openai.example',
+        model: 'gpt-4o-mini',
+        fallbackModel: 'gemini-2.5-flash',
+        fallbackMode: 'gemini',
+        fallbackApiKey: 'gemini-key',
+        fallbackBaseURL: undefined,
+        providerPriority: 'primary-first',
+        reasoningEffort: undefined,
+        mode: 'openai',
+        language: 'ko',
+        autoPush: false,
+        coAuthor: 'git-ai-commit <git-ai-commit@users.noreply.github.com>',
+      });
+    });
+
+    it('allows config file to override fallback provider settings', async () => {
+      process.env.AI_MODE = 'openai';
+      process.env.OPENAI_API_KEY = 'openai-key';
+      process.env.AI_FALLBACK_MODE = 'gemini';
+      process.env.GEMINI_API_KEY = 'gemini-key';
+
+      await ConfigService.updateConfig({
+        fallbackMode: 'custom',
+        fallbackModel: 'fallback-custom-model',
+        fallbackApiKey: 'fallback-file-key',
+        fallbackBaseURL: 'https://fallback.file.example'
+      });
+
+      const config = ConfigService.getConfig();
+
+      expect(config.fallbackMode).toBe('custom');
+      expect(config.fallbackModel).toBe('fallback-custom-model');
+      expect(config.fallbackApiKey).toBe('fallback-file-key');
+      expect(config.fallbackBaseURL).toBe('https://fallback.file.example');
+      expect(config.providerPriority).toBe('primary-first');
+    });
+
+    it('supports fallback-first provider priority', async () => {
+      await ConfigService.updateConfig({
+        providerPriority: 'fallback-first',
+      });
+
+      const config = ConfigService.getConfig();
+
+      expect(config.providerPriority).toBe('fallback-first');
     });
 
     it('persists mode and model updates from config file', async () => {

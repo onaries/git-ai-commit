@@ -190,7 +190,12 @@ export class GitService {
 
   static async restageModifiedFiles(): Promise<boolean> {
     try {
-      await execFileAsync('git', ['add', '-u']);
+      // Only re-stage files that were originally staged, not all modified files
+      const { stdout } = await execFileAsync('git', ['diff', '--cached', '--name-only', '--diff-filter=ACM']);
+      const files = stdout.trim().split('\n').filter(f => f.length > 0);
+      if (files.length > 0) {
+        await execFileAsync('git', ['add', '--', ...files]);
+      }
       return true;
     } catch {
       return false;

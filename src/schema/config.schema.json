@@ -26,8 +26,28 @@
     },
     "fallbackModel": {
       "type": "string",
-      "description": "Fallback model used when the primary model returns a 429 (rate limit) error.",
-      "examples": ["glm-4-flash", "gpt-4o-mini"]
+      "description": "Fallback model used when the primary provider hits rate limits, server errors, or repeated no-response timeouts.",
+      "examples": ["glm-4-flash", "gpt-4o-mini", "gemini-2.0-flash"]
+    },
+    "fallbackMode": {
+      "type": "string",
+      "enum": ["custom", "openai", "gemini"],
+      "description": "Fallback AI provider mode. When omitted, fallbackModel stays on the primary provider."
+    },
+    "fallbackApiKey": {
+      "type": "string",
+      "description": "Optional fallback API key. Overrides AI_FALLBACK_API_KEY and provider defaults when the fallback provider is used."
+    },
+    "fallbackBaseURL": {
+      "type": "string",
+      "format": "uri",
+      "description": "Optional fallback API base URL. Overrides AI_FALLBACK_BASE_URL and provider defaults. Ignored in gemini mode."
+    },
+    "providerPriority": {
+      "type": "string",
+      "enum": ["primary-first", "fallback-first"],
+      "default": "primary-first",
+      "description": "Controls whether the configured primary provider or fallback provider is tried first."
     },
     "reasoningEffort": {
       "type": "string",

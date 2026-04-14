@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { ConfigService, SupportedLanguage, AIMode } from './config';
+import { ConfigService, SupportedLanguage, AIMode, ProviderPriority } from './config';
 
 export interface ConfigOptions {
   show?: boolean;
@@ -9,6 +9,10 @@ export interface ConfigOptions {
   baseUrl?: string;
   model?: string;
   fallbackModel?: string;
+  fallbackMode?: AIMode;
+  fallbackApiKey?: string;
+  fallbackBaseUrl?: string;
+  providerPriority?: ProviderPriority;
   reasoningEffort?: string;
   mode?: AIMode;
   coAuthor?: string;
@@ -30,6 +34,10 @@ export class ConfigCommand {
       .option('-b, --base-url <url>', 'Persist API base URL (overrides environment variables)')
       .option('-m, --model <model>', 'Persist default AI model')
       .option('--fallback-model <model>', 'Persist fallback model for rate limit (429) retry')
+      .option('--fallback-mode <mode>', 'Persist fallback AI mode (custom | openai | gemini)')
+      .option('--fallback-api-key <key>', 'Persist fallback API key for cross-provider fallback')
+      .option('--fallback-base-url <url>', 'Persist fallback API base URL for cross-provider fallback')
+      .option('--provider-priority <priority>', 'Persist provider priority (primary-first | fallback-first)')
       .option('--reasoning-effort <level>', 'Thinking effort for reasoning models (minimal | low | medium | high)')
       .option('--mode <mode>', 'Persist AI mode (custom | openai | gemini)')
       .option('--co-author <value>', 'Set co-author for commits (e.g. "Name <email>")')
@@ -67,12 +75,26 @@ export class ConfigCommand {
     return trimmed.length > 0 ? trimmed : undefined;
   }
 
+  private validateProviderPriority(priority: string): ProviderPriority {
+    const normalized = priority?.toLowerCase();
+    if (normalized !== 'primary-first' && normalized !== 'fallback-first') {
+      console.error('Provider priority must be one of: "primary-first", "fallback-first".');
+      process.exit(1);
+    }
+
+    return normalized as ProviderPriority;
+  }
+
   private async handleConfig(options: ConfigOptions) {
     const updates: {
       apiKey?: string;
       baseURL?: string;
       model?: string;
       fallbackModel?: string;
+      fallbackMode?: AIMode;
+      fallbackApiKey?: string;
+      fallbackBaseURL?: string;
+      providerPriority?: ProviderPriority;
       reasoningEffort?: string;
       mode?: AIMode;
       language?: SupportedLanguage;
@@ -103,6 +125,22 @@ export class ConfigCommand {
 
     if (options.fallbackModel !== undefined) {
       updates.fallbackModel = this.sanitizeStringValue(options.fallbackModel);
+    }
+
+    if (options.fallbackMode !== undefined) {
+      updates.fallbackMode = this.validateMode(options.fallbackMode);
+    }
+
+    if (options.fallbackApiKey !== undefined) {
+      updates.fallbackApiKey = this.sanitizeStringValue(options.fallbackApiKey);
+    }
+
+    if (options.fallbackBaseUrl !== undefined) {
+      updates.fallbackBaseURL = this.sanitizeStringValue(options.fallbackBaseUrl);
+    }
+
+    if (options.providerPriority !== undefined) {
+      updates.providerPriority = this.validateProviderPriority(options.providerPriority);
     }
 
     if (options.reasoningEffort !== undefined) {
@@ -151,6 +189,9 @@ export class ConfigCommand {
       console.log('  git-ai-commit config --mode gemini          # Use Gemini native SDK (GEMINI_API_KEY)');
       console.log('  git-ai-commit config --model gpt-4o-mini    # Persist preferred AI model');
       console.log('  git-ai-commit config --fallback-model glm-4-flash  # Fallback model for 429 retry');
+      console.log('  git-ai-commit config --fallback-mode gemini --fallback-model gemini-2.5-flash  # Cross-provider fallback');
+      console.log('  git-ai-commit config --provider-priority fallback-first  # Try fallback provider before primary');
+      console.log('  git-ai-commit config --fallback-api-key xxx --fallback-base-url https://api.test  # Override fallback credentials');
       console.log('  git-ai-commit config --co-author "Name <email>"  # Set co-author for commits');
       console.log('  git-ai-commit config --max-tokens 2000        # Set max completion tokens for AI');
       return;
@@ -177,6 +218,10 @@ export class ConfigCommand {
         console.log(`Base URL: ${config.baseURL || 'Not set (using provider default)'}`);
         console.log(`Model: ${config.model || 'zai-org/GLM-4.5-FP8 (default)'}`);
         console.log(`Fallback Model: ${config.fallbackModel || 'Not set'}`);
+        console.log(`Fallback Mode: ${config.fallbackMode || 'Not set'}`);
+        console.log(`Fallback API Key: ${config.fallbackApiKey ? '***' + config.fallbackApiKey.slice(-4) : 'Not set'}`);
+        console.log(`Fallback Base URL: ${config.fallbackBaseURL || 'Not set (using fallback provider default)'}`);
+        console.log(`Provider Priority: ${config.providerPriority}`);
         console.log(`Reasoning Effort: ${config.reasoningEffort || 'Not set (model default)'}`);
         console.log(`Mode: ${config.mode || 'custom (default)'}`);
         console.log(`Co-author: ${config.coAuthor === false ? 'disabled' : config.coAuthor}`);
