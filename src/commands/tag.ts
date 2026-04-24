@@ -76,6 +76,7 @@ export class TagCommand {
       fallbackApiKey: storedConfig.fallbackApiKey,
       fallbackBaseURL: storedConfig.fallbackBaseURL,
       providerPriority: storedConfig.providerPriority,
+      reasoning: storedConfig.reasoning,
       reasoningEffort: storedConfig.reasoningEffort,
       language: storedConfig.language,
       mode: storedConfig.mode,

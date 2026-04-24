@@ -49,6 +49,10 @@
       "default": "primary-first",
       "description": "Controls whether the configured primary provider or fallback provider is tried first."
     },
+    "reasoning": {
+      "type": "boolean",
+      "description": "Enables or disables provider thinking/reasoning when supported. When omitted, the provider/model default is used."
+    },
     "reasoningEffort": {
       "type": "string",
       "enum": ["minimal", "low", "medium", "high"],
@@ -70,6 +74,11 @@
       "type": "boolean",
       "default": false,
       "description": "Automatically push to remote after a successful commit."
+    },
+    "maxCompletionTokens": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Maximum completion tokens for AI responses. When omitted, per-command defaults are used."
     },
     "coAuthor": {
       "oneOf": [

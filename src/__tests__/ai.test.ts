@@ -690,6 +690,92 @@ describe('AIService', () => {
       expect(result).toEqual({ success: true, message: 'feat: final message' });
     });
 
+    it('should send thinking disabled when reasoning is disabled', async () => {
+      const quietService = new AIService({
+        apiKey: 'test-api-key',
+        model: 'gpt-4',
+        reasoning: false,
+        reasoningEffort: 'high',
+        verbose: false
+      });
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(createMockStream('feat: no thinking'));
+
+      const result = await quietService.generateCommitMessage('diff');
+
+      expect(result).toEqual({ success: true, message: 'feat: no thinking' });
+      expect(mockOpenai.chat.completions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thinking: { type: 'disabled' },
+          stream: true,
+          stream_options: { include_usage: true }
+        }),
+        expect.objectContaining({
+          signal: expect.any(Object)
+        })
+      );
+      expect(mockOpenai.chat.completions.create).toHaveBeenCalledWith(
+        expect.not.objectContaining({
+          reasoning_effort: expect.anything()
+        }),
+        expect.anything()
+      );
+    });
+
+    it('should send thinking enabled and reasoning effort when configured', async () => {
+      const quietService = new AIService({
+        apiKey: 'test-api-key',
+        model: 'gpt-4',
+        reasoning: true,
+        reasoningEffort: 'low',
+        verbose: false
+      });
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(createMockStream('feat: thinking enabled'));
+
+      const result = await quietService.generateCommitMessage('diff');
+
+      expect(result).toEqual({ success: true, message: 'feat: thinking enabled' });
+      expect(mockOpenai.chat.completions.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          thinking: { type: 'enabled' },
+          reasoning_effort: 'low'
+        }),
+        expect.objectContaining({
+          signal: expect.any(Object)
+        })
+      );
+    });
+
+    it('should retry without thinking parameter when unsupported by provider', async () => {
+      const quietService = new AIService({
+        apiKey: 'test-api-key',
+        model: 'gpt-4',
+        reasoning: false,
+        verbose: false
+      });
+      const error = {
+        code: 'unsupported_parameter',
+        param: 'thinking',
+        message: 'Unsupported parameter: thinking'
+      };
+      (mockOpenai.chat.completions.create as jest.Mock)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce(createMockStream('feat: retried without thinking'));
+
+      const result = await quietService.generateCommitMessage('diff');
+
+      expect(result).toEqual({ success: true, message: 'feat: retried without thinking' });
+      expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(
+        1,
+        expect.objectContaining({ thinking: { type: 'disabled' } }),
+        expect.objectContaining({ signal: expect.any(Object) })
+      );
+      expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(
+        2,
+        expect.not.objectContaining({ thinking: expect.anything() }),
+        expect.objectContaining({ signal: expect.any(Object) })
+      );
+    });
+
     it('should include reasoning token stats when usage has reasoning tokens', async () => {
       const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
 
@@ -714,6 +800,25 @@ describe('AIService', () => {
       expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('thinking: 12'));
 
       writeSpy.mockRestore();
+    });
+
+    it('should label streaming progress as estimated tokens instead of chunks when usage is unavailable', async () => {
+      const writeSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+      try {
+        (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+          createMockStream('feat: token progress')
+        );
+
+        const result = await aiService.generateCommitMessage('diff');
+        expect(result).toEqual({ success: true, message: 'feat: token progress' });
+
+        const writes = writeSpy.mock.calls.map(call => String(call[0]));
+        expect(writes.some(write => write.includes('tokens'))).toBe(true);
+        expect(writes.some(write => write.includes('chunks'))).toBe(false);
+      } finally {
+        writeSpy.mockRestore();
+      }
     });
   });
 
@@ -947,6 +1052,30 @@ describe('AIService', () => {
           config: expect.objectContaining({
             systemInstruction: expect.stringContaining('Git diff will be provided separately in the user message.'),
             maxOutputTokens: 3000
+          })
+        })
+      );
+    });
+
+    it('should disable gemini thinking with thinkingBudget 0 when reasoning is disabled', async () => {
+      const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
+      const generateContentStream = jest.fn().mockResolvedValue(createGeminiMockStream([{ text: 'feat: no gemini thinking' }]));
+      GoogleGenAI.mockImplementation(() => ({ models: { generateContentStream } }));
+
+      const geminiService = new AIService({
+        apiKey: 'gem-key',
+        mode: 'gemini',
+        model: 'gem-model',
+        reasoning: false,
+        verbose: false
+      });
+      const result = await geminiService.generateCommitMessage('my-diff');
+
+      expect(result).toEqual({ success: true, message: 'feat: no gemini thinking' });
+      expect(generateContentStream).toHaveBeenCalledWith(
+        expect.objectContaining({
+          config: expect.objectContaining({
+            thinkingConfig: { thinkingBudget: 0 }
           })
         })
       );

@@ -13,6 +13,7 @@ export interface ConfigOptions {
   fallbackApiKey?: string;
   fallbackBaseUrl?: string;
   providerPriority?: ProviderPriority;
+  reasoning?: boolean;
   reasoningEffort?: string;
   mode?: AIMode;
   coAuthor?: string;
@@ -38,6 +39,8 @@ export class ConfigCommand {
       .option('--fallback-api-key <key>', 'Persist fallback API key for cross-provider fallback')
       .option('--fallback-base-url <url>', 'Persist fallback API base URL for cross-provider fallback')
       .option('--provider-priority <priority>', 'Persist provider priority (primary-first | fallback-first)')
+      .option('--reasoning', 'Enable model thinking/reasoning when the provider supports it')
+      .option('--no-reasoning', 'Disable model thinking/reasoning when the provider supports it')
       .option('--reasoning-effort <level>', 'Thinking effort for reasoning models (minimal | low | medium | high)')
       .option('--mode <mode>', 'Persist AI mode (custom | openai | gemini)')
       .option('--co-author <value>', 'Set co-author for commits (e.g. "Name <email>")')
@@ -95,6 +98,7 @@ export class ConfigCommand {
       fallbackApiKey?: string;
       fallbackBaseURL?: string;
       providerPriority?: ProviderPriority;
+      reasoning?: boolean;
       reasoningEffort?: string;
       mode?: AIMode;
       language?: SupportedLanguage;
@@ -141,6 +145,10 @@ export class ConfigCommand {
 
     if (options.providerPriority !== undefined) {
       updates.providerPriority = this.validateProviderPriority(options.providerPriority);
+    }
+
+    if (typeof options.reasoning === 'boolean') {
+      updates.reasoning = options.reasoning;
     }
 
     if (options.reasoningEffort !== undefined) {
@@ -192,6 +200,8 @@ export class ConfigCommand {
       console.log('  git-ai-commit config --fallback-mode gemini --fallback-model gemini-2.5-flash  # Cross-provider fallback');
       console.log('  git-ai-commit config --provider-priority fallback-first  # Try fallback provider before primary');
       console.log('  git-ai-commit config --fallback-api-key xxx --fallback-base-url https://api.test  # Override fallback credentials');
+      console.log('  git-ai-commit config --no-reasoning        # Disable provider thinking/reasoning');
+      console.log('  git-ai-commit config --reasoning           # Enable provider thinking/reasoning');
       console.log('  git-ai-commit config --co-author "Name <email>"  # Set co-author for commits');
       console.log('  git-ai-commit config --max-tokens 2000        # Set max completion tokens for AI');
       return;
@@ -222,6 +232,7 @@ export class ConfigCommand {
         console.log(`Fallback API Key: ${config.fallbackApiKey ? '***' + config.fallbackApiKey.slice(-4) : 'Not set'}`);
         console.log(`Fallback Base URL: ${config.fallbackBaseURL || 'Not set (using fallback provider default)'}`);
         console.log(`Provider Priority: ${config.providerPriority}`);
+        console.log(`Reasoning: ${config.reasoning === undefined ? 'Not set (provider/model default)' : (config.reasoning ? 'enabled' : 'disabled')}`);
         console.log(`Reasoning Effort: ${config.reasoningEffort || 'Not set (model default)'}`);
         console.log(`Mode: ${config.mode || 'custom (default)'}`);
         console.log(`Co-author: ${config.coAuthor === false ? 'disabled' : config.coAuthor}`);

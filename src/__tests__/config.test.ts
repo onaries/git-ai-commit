@@ -262,6 +262,34 @@ describe('ConfigService', () => {
       expect(config.providerPriority).toBe('fallback-first');
     });
 
+    it('supports reasoning toggle from config file', async () => {
+      await ConfigService.updateConfig({
+        reasoning: false,
+      });
+
+      let config = ConfigService.getConfig();
+      expect(config.reasoning).toBe(false);
+
+      await ConfigService.updateConfig({
+        reasoning: true,
+      });
+
+      config = ConfigService.getConfig();
+      expect(config.reasoning).toBe(true);
+    });
+
+    it('supports reasoning toggle from environment variables', () => {
+      process.env.AI_REASONING = 'off';
+
+      let config = ConfigService.getConfig();
+      expect(config.reasoning).toBe(false);
+
+      process.env.AI_REASONING = 'enabled';
+
+      config = ConfigService.getConfig();
+      expect(config.reasoning).toBe(true);
+    });
+
     it('persists mode and model updates from config file', async () => {
       await ConfigService.updateConfig({
         apiKey: 'file-key',

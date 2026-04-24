@@ -17,6 +17,7 @@ export interface AIServiceConfig {
   fallbackApiKey?: string;
   fallbackBaseURL?: string;
   providerPriority?: ProviderPriority;
+  reasoning?: boolean;
   reasoningEffort?: ReasoningEffort;
   language?: SupportedLanguage;
   verbose?: boolean;
@@ -47,6 +48,8 @@ interface StreamingCompletionOptions {
   modelOverride?: string;
   initialResponseTimeoutMs?: number;
   noResponseRetryAttempt?: number;
+  disableThinkingParam?: boolean;
+  disableReasoningEffortParam?: boolean;
 }
 
 interface InitialResponseTimeoutState {
@@ -68,6 +71,7 @@ export class AIService {
   private fallbackApiKey?: string;
   private fallbackBaseURL?: string;
   private providerPriority: ProviderPriority;
+  private reasoning?: boolean;
   private reasoningEffort?: ReasoningEffort;
   private language: SupportedLanguage;
   private verbose: boolean;
@@ -129,6 +133,7 @@ export class AIService {
     this.fallbackMode = secondaryConfig?.mode;
     this.fallbackApiKey = secondaryConfig?.apiKey;
     this.fallbackBaseURL = secondaryConfig?.baseURL;
+    this.reasoning = config.reasoning;
     this.reasoningEffort = config.reasoningEffort;
     this.language = config.language || 'ko';
     this.verbose = config.verbose ?? true;
@@ -161,6 +166,33 @@ export class AIService {
     error: unknown,
     param: 'max_tokens' | 'max_completion_tokens'
   ): boolean {
+    if (!error || typeof error !== 'object') {
+      return false;
+    }
+
+    const errorObj = error as {
+      error?: { message?: string; param?: string; code?: string };
+      message?: string;
+      param?: string;
+      code?: string;
+    };
+
+    const message = errorObj.error?.message ?? errorObj.message;
+    const code = errorObj.error?.code ?? errorObj.code;
+    const errorParam = errorObj.error?.param ?? errorObj.param;
+
+    if (code === 'unsupported_parameter' && errorParam === param) {
+      return true;
+    }
+
+    if (typeof message === 'string') {
+      return message.includes('Unsupported parameter') && message.includes(param);
+    }
+
+    return false;
+  }
+
+  private isUnsupportedParameterError(error: unknown, param: string): boolean {
     if (!error || typeof error !== 'object') {
       return false;
     }
@@ -249,6 +281,27 @@ export class AIService {
     return `${seconds}s`;
   }
 
+  private estimateStreamTokenCount(text: string): number {
+    if (!text) {
+      return 0;
+    }
+
+    const cjkPattern = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
+    const cjkMatches = text.match(cjkPattern) ?? [];
+    const nonCjkText = text.replace(cjkPattern, ' ');
+    const nonCjkPieces = nonCjkText.match(/[A-Za-z0-9_]+|[^\sA-Za-z0-9_]/g) ?? [];
+    const nonCjkEstimate = nonCjkPieces.reduce((total, piece) => {
+      if (/^[A-Za-z0-9_]+$/.test(piece)) {
+        return total + Math.max(1, Math.ceil(piece.length / 4));
+      }
+
+      return total + 1;
+    }, 0);
+    const estimate = cjkMatches.length + nonCjkEstimate;
+
+    return Math.max(1, estimate);
+  }
+
   private buildNoResponseError(timeoutMs?: number): Error {
     const timeoutLabel = this.formatElapsed(timeoutMs ?? 0);
     return new Error(
@@ -297,6 +350,7 @@ export class AIService {
       apiKey: this.fallbackApiKey,
       baseURL: fallbackBaseURL,
       model: this.fallbackModel,
+      reasoning: this.reasoning,
       reasoningEffort: this.reasoningEffort,
       language: this.language,
       verbose: this.verbose,
@@ -385,12 +439,14 @@ export class AIService {
       const maxTokens = (request as unknown as Record<string, unknown>).max_completion_tokens as number | undefined
         ?? request.max_tokens
         ?? 3000;
+      const thinkingConfig = this.buildGeminiThinkingConfig();
 
       const stream = await this.gemini.models.generateContentStream({
         model: currentModel,
         contents,
         config: {
           ...(systemMessage ? { systemInstruction: typeof systemMessage.content === 'string' ? systemMessage.content : '' } : {}),
+          ...(thinkingConfig ? { thinkingConfig } : {}),
           maxOutputTokens: maxTokens,
           ...(initialResponseTimeout.controller
             ? { abortSignal: initialResponseTimeout.controller.signal }
@@ -399,7 +455,7 @@ export class AIService {
       });
 
       const contentChunks: string[] = [];
-      let chunkCount = 0;
+      let estimatedResponseTokens = 0;
       let lastChunkUsage: { promptTokenCount?: number; candidatesTokenCount?: number; totalTokenCount?: number } | undefined;
 
       for await (const chunk of stream) {
@@ -412,7 +468,7 @@ export class AIService {
         const text = chunk.text;
         if (text) {
           contentChunks.push(text);
-          chunkCount++;
+          estimatedResponseTokens += this.estimateStreamTokenCount(text);
 
           if (waitingTimer) {
             clearInterval(waitingTimer);
@@ -422,7 +478,7 @@ export class AIService {
           if (this.verbose) {
             const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
             const elapsed = this.formatElapsed(Date.now() - startTime);
-            process.stdout.write(`\r${frame} Streaming... (${chunkCount} chunks, ${elapsed})`);
+            process.stdout.write(`\r${frame} Streaming... (~${estimatedResponseTokens} tokens, ${elapsed})`);
           }
         }
       }
@@ -440,7 +496,7 @@ export class AIService {
           const response = lastChunkUsage.candidatesTokenCount ?? 0;
           process.stdout.write(`\r✅ Complete (response: ${response}, prompt: ${prompt} tokens, ${elapsed})\n`);
         } else {
-          process.stdout.write(`\r✅ Complete (~${chunkCount} chunks, ${elapsed})\n`);
+          process.stdout.write(`\r✅ Complete (~${estimatedResponseTokens} tokens, ${elapsed})\n`);
         }
       }
 
@@ -510,6 +566,34 @@ export class AIService {
     }
   }
 
+  private buildGeminiThinkingConfig(): { thinkingBudget: number } | undefined {
+    if (this.reasoning === false) {
+      return { thinkingBudget: 0 };
+    }
+
+    if (this.reasoning === true) {
+      return { thinkingBudget: -1 };
+    }
+
+    return undefined;
+  }
+
+  private buildOpenAIReasoningExtras(options: StreamingCompletionOptions): Record<string, unknown> {
+    const extras: Record<string, unknown> = {};
+
+    if (this.reasoning !== undefined && !options.disableThinkingParam) {
+      extras.thinking = {
+        type: this.reasoning ? 'enabled' : 'disabled'
+      };
+    }
+
+    if (this.reasoning !== false && this.reasoningEffort && !options.disableReasoningEffortParam) {
+      extras.reasoning_effort = this.reasoningEffort;
+    }
+
+    return extras;
+  }
+
   private async createStreamingCompletion(
     request: ChatCompletionCreateParamsNonStreaming,
     options: StreamingCompletionOptions = {}
@@ -545,7 +629,7 @@ export class AIService {
         ...request,
         stream: true as const,
         stream_options: { include_usage: true },
-        ...(this.reasoningEffort ? { reasoning_effort: this.reasoningEffort } : {})
+        ...this.buildOpenAIReasoningExtras(options)
       };
 
       const stream = initialResponseTimeout.controller
@@ -555,8 +639,8 @@ export class AIService {
         : await this.openai.chat.completions.create(streamParams);
 
       const contentChunks: string[] = [];
-      let reasoningChunks = 0;
-      let contentChunksCount = 0;
+      let estimatedReasoningTokens = 0;
+      let estimatedResponseTokens = 0;
       let phase: 'waiting' | 'thinking' | 'content' = 'waiting';
       
       interface StreamUsage {
@@ -584,7 +668,7 @@ export class AIService {
         const reasoning = (delta as Record<string, unknown>)?.reasoning_content as string | undefined;
 
         if (reasoning) {
-          reasoningChunks++;
+          estimatedReasoningTokens += this.estimateStreamTokenCount(reasoning);
 
           if (phase === 'waiting' && waitingTimer) {
             clearInterval(waitingTimer);
@@ -595,13 +679,13 @@ export class AIService {
           if (this.verbose && phase === 'thinking') {
             const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
             const elapsed = this.formatElapsed(Date.now() - startTime);
-            process.stdout.write(`\r${frame} Thinking... (${reasoningChunks} chunks, ${elapsed})`);
+            process.stdout.write(`\r${frame} Thinking... (~${estimatedReasoningTokens} tokens, ${elapsed})`);
           }
         }
 
         if (content) {
           contentChunks.push(content);
-          contentChunksCount++;
+          estimatedResponseTokens += this.estimateStreamTokenCount(content);
 
           if (phase !== 'content') {
             if (waitingTimer) {
@@ -614,7 +698,7 @@ export class AIService {
           if (this.verbose) {
             const frame = this.spinnerFrames[frameIndex++ % this.spinnerFrames.length];
             const elapsed = this.formatElapsed(Date.now() - startTime);
-            process.stdout.write(`\r${frame} Streaming... (${contentChunksCount} chunks, ${elapsed})`);
+            process.stdout.write(`\r${frame} Streaming... (~${estimatedResponseTokens} tokens, ${elapsed})`);
           }
         }
       }
@@ -645,9 +729,9 @@ export class AIService {
             process.stdout.write(`\r✅ Complete (response: ${completionTokens}, prompt: ${promptTokens} tokens, ${elapsed})\n`);
           }
         } else {
-          const detail = reasoningChunks > 0
-            ? `~${reasoningChunks + contentChunksCount} chunks (thinking: ~${reasoningChunks}, response: ~${contentChunksCount}), ${elapsed}`
-            : `~${contentChunksCount} chunks, ${elapsed}`;
+          const detail = estimatedReasoningTokens > 0
+            ? `~${estimatedReasoningTokens + estimatedResponseTokens} tokens (thinking: ~${estimatedReasoningTokens}, response: ~${estimatedResponseTokens}), ${elapsed}`
+            : `~${estimatedResponseTokens} tokens, ${elapsed}`;
           process.stdout.write(`\r✅ Complete (${detail})\n`);
         }
       }
@@ -676,7 +760,9 @@ export class AIService {
         return await this.createStreamingCompletion(request, {
           attempt,
           initialResponseTimeoutMs,
-          noResponseRetryAttempt: nextNoResponseRetry
+          noResponseRetryAttempt: nextNoResponseRetry,
+          disableThinkingParam: options.disableThinkingParam,
+          disableReasoningEffortParam: options.disableReasoningEffortParam
         });
       }
       if (initialResponseTimeout.didTimeout()) {
@@ -696,7 +782,31 @@ export class AIService {
         return await this.createStreamingCompletion(fallbackRequest, {
           attempt: attempt + 1,
           initialResponseTimeoutMs,
-          noResponseRetryAttempt
+          noResponseRetryAttempt,
+          disableThinkingParam: options.disableThinkingParam,
+          disableReasoningEffortParam: options.disableReasoningEffortParam
+        });
+      }
+
+      if (!options.disableThinkingParam && this.isUnsupportedParameterError(error, 'thinking')) {
+        this.debugLog('Retrying without thinking parameter because the provider does not support it.');
+        return await this.createStreamingCompletion(request, {
+          attempt: attempt + 1,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt,
+          disableThinkingParam: true,
+          disableReasoningEffortParam: options.disableReasoningEffortParam
+        });
+      }
+
+      if (!options.disableReasoningEffortParam && this.isUnsupportedParameterError(error, 'reasoning_effort')) {
+        this.debugLog('Retrying without reasoning_effort parameter because the provider does not support it.');
+        return await this.createStreamingCompletion(request, {
+          attempt: attempt + 1,
+          initialResponseTimeoutMs,
+          noResponseRetryAttempt,
+          disableThinkingParam: options.disableThinkingParam,
+          disableReasoningEffortParam: true
         });
       }
 
@@ -706,7 +816,9 @@ export class AIService {
         return await this.createStreamingCompletion(fallbackRequest, {
           attempt: attempt + 1,
           initialResponseTimeoutMs,
-          noResponseRetryAttempt
+          noResponseRetryAttempt,
+          disableThinkingParam: options.disableThinkingParam,
+          disableReasoningEffortParam: options.disableReasoningEffortParam
         });
       }
 
@@ -716,7 +828,9 @@ export class AIService {
         return await this.createStreamingCompletion(fallbackRequest, {
           attempt: attempt + 1,
           initialResponseTimeoutMs,
-          noResponseRetryAttempt
+          noResponseRetryAttempt,
+          disableThinkingParam: options.disableThinkingParam,
+          disableReasoningEffortParam: options.disableReasoningEffortParam
         });
       }
 
@@ -730,7 +844,9 @@ export class AIService {
         return await this.createStreamingCompletion(request, {
           attempt: attempt + 1,
           initialResponseTimeoutMs,
-          noResponseRetryAttempt
+          noResponseRetryAttempt,
+          disableThinkingParam: options.disableThinkingParam,
+          disableReasoningEffortParam: options.disableReasoningEffortParam
         });
       }
 

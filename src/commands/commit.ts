@@ -172,6 +172,7 @@ export class CommitCommand {
         fallbackApiKey: existingConfig.fallbackApiKey,
         fallbackBaseURL: existingConfig.fallbackBaseURL,
         providerPriority: existingConfig.providerPriority,
+        reasoning: existingConfig.reasoning,
         reasoningEffort: existingConfig.reasoningEffort,
         language: existingConfig.language,
         verbose: !messageOnly,

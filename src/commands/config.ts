@@ -19,6 +19,7 @@ export interface EnvironmentConfig {
   fallbackApiKey?: string;
   fallbackBaseURL?: string;
   providerPriority: ProviderPriority;
+  reasoning?: boolean;
   reasoningEffort?: ReasoningEffort;
   mode: AIMode;
   language: SupportedLanguage;
@@ -36,6 +37,7 @@ interface StoredConfig {
   fallbackApiKey?: string;
   fallbackBaseURL?: string;
   providerPriority?: ProviderPriority | string;
+  reasoning?: boolean | string;
   reasoningEffort?: ReasoningEffort | string;
   mode?: AIMode;
   language?: SupportedLanguage | string;
@@ -130,25 +132,49 @@ export class ConfigService {
     return normalized === 'fallback-first' ? 'fallback-first' : 'primary-first';
   }
 
+  private static normalizeOptionalBoolean(value?: boolean | string): boolean | undefined {
+    if (typeof value === 'boolean') {
+      return value;
+    }
+
+    if (typeof value !== 'string') {
+      return undefined;
+    }
+
+    const normalized = value.toLowerCase().trim();
+    if (['true', '1', 'yes', 'on', 'enabled', 'enable'].includes(normalized)) {
+      return true;
+    }
+    if (['false', '0', 'no', 'off', 'disabled', 'disable'].includes(normalized)) {
+      return false;
+    }
+
+    return undefined;
+  }
+
   private static resolveEnvConfig(modeOverride?: AIMode): EnvironmentConfig {
     const resolvedMode = this.normalizeMode(modeOverride || process.env.AI_MODE);
 
     let apiKey: string | undefined;
     let baseURL: string | undefined;
     let model: string;
+    let reasoning: boolean | undefined;
 
     if (resolvedMode === 'gemini') {
       apiKey = process.env.GEMINI_API_KEY || process.env.AI_API_KEY;
       baseURL = undefined;
       model = process.env.AI_MODEL || 'gemini-3-flash-preview';
+      reasoning = this.normalizeOptionalBoolean(process.env.AI_REASONING);
     } else if (resolvedMode === 'openai') {
       apiKey = process.env.OPENAI_API_KEY || process.env.AI_API_KEY;
       baseURL = process.env.OPENAI_BASE_URL || process.env.AI_BASE_URL;
       model = process.env.OPENAI_MODEL || process.env.AI_MODEL || DEFAULT_MODEL;
+      reasoning = this.normalizeOptionalBoolean(process.env.OPENAI_REASONING ?? process.env.AI_REASONING);
     } else {
       apiKey = process.env.AI_API_KEY || process.env.OPENAI_API_KEY;
       baseURL = process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL;
       model = process.env.AI_MODEL || process.env.OPENAI_MODEL || DEFAULT_MODEL;
+      reasoning = this.normalizeOptionalBoolean(process.env.AI_REASONING ?? process.env.OPENAI_REASONING);
     }
 
     return {
@@ -156,6 +182,7 @@ export class ConfigService {
       baseURL: baseURL || undefined,
       model,
       providerPriority: DEFAULT_PROVIDER_PRIORITY,
+      reasoning,
       mode: resolvedMode,
       language: DEFAULT_LANGUAGE,
       autoPush: DEFAULT_AUTO_PUSH
@@ -201,6 +228,7 @@ export class ConfigService {
         ?? fallbackEnvConfig?.baseURL
       : undefined;
     const reasoningEffort = this.normalizeReasoningEffort(fileConfig.reasoningEffort);
+    const reasoning = this.normalizeOptionalBoolean(fileConfig.reasoning) ?? envConfig.reasoning;
     const language = this.normalizeLanguage(fileConfig.language ?? envConfig.language);
     const autoPush = typeof fileConfig.autoPush === 'boolean' ? fileConfig.autoPush : envConfig.autoPush;
     const coAuthor = fileConfig.coAuthor === false ? false : (fileConfig.coAuthor || DEFAULT_CO_AUTHOR);
@@ -216,6 +244,7 @@ export class ConfigService {
       fallbackApiKey,
       fallbackBaseURL,
       providerPriority,
+      reasoning,
       reasoningEffort,
       mode,
       language,
@@ -256,6 +285,10 @@ export class ConfigService {
 
     if (updates.providerPriority !== undefined) {
       next.providerPriority = this.normalizeProviderPriority(updates.providerPriority as string);
+    }
+
+    if (updates.reasoning !== undefined) {
+      next.reasoning = this.normalizeOptionalBoolean(updates.reasoning);
     }
 
     if (next.model === DEFAULT_MODEL) {

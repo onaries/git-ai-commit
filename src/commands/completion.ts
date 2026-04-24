@@ -40,7 +40,7 @@ _git_ai_commit() {
 
     # Command-specific options
     local commit_opts="-k --api-key -b --base-url --model -m --message-only -p --push --prompt --no-verify"
-    local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --fallback-mode --fallback-api-key --fallback-base-url --provider-priority --reasoning-effort --mode --co-author --no-co-author"
+    local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --fallback-mode --fallback-api-key --fallback-base-url --provider-priority --reasoning --no-reasoning --reasoning-effort --mode --co-author --no-co-author --max-tokens"
     local pr_opts="--base --compare -k --api-key -b --base-url --model"
     local tag_opts="-k --api-key --base-url -m --model --message -t --base-tag --prompt"
     local history_opts="-l --limit --json --clear"
@@ -82,7 +82,11 @@ _git_ai_commit() {
                     COMPREPLY=( $(compgen -W "primary-first fallback-first" -- "\${cur}") )
                     return
                     ;;
-                -k|--api-key|-b|--base-url|-m|--model|--fallback-model|--fallback-api-key|--fallback-base-url|--co-author)
+                --reasoning-effort)
+                    COMPREPLY=( $(compgen -W "minimal low medium high" -- "\${cur}") )
+                    return
+                    ;;
+                -k|--api-key|-b|--base-url|-m|--model|--fallback-model|--fallback-api-key|--fallback-base-url|--co-author|--max-tokens)
                     return
                     ;;
             esac
@@ -207,9 +211,13 @@ _git-ai-commit() {
                         '--fallback-api-key[Persist fallback API key]:key:' \\
                         '--fallback-base-url[Persist fallback API base URL]:url:' \\
                         '--provider-priority[Persist provider priority]:priority:(primary-first fallback-first)' \\
+                        '--reasoning[Enable model thinking/reasoning]' \\
+                        '--no-reasoning[Disable model thinking/reasoning]' \\
+                        '--reasoning-effort[Thinking effort for reasoning models]:level:(minimal low medium high)' \\
                         '--mode[Persist AI mode]:mode:(custom openai gemini)' \\
                         '--co-author[Set Co-authored-by trailer for commits]:author:' \\
-                        '--no-co-author[Remove Co-authored-by trailer]'
+                        '--no-co-author[Remove Co-authored-by trailer]' \\
+                        '--max-tokens[Persist max completion tokens]:tokens:'
                     ;;
                 pr)
                     _arguments \\
