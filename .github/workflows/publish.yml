@@ -12,6 +12,8 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      NPM_VERSION: 11.5.1
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,20 +24,20 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org/
 
-      - name: Update npm for OIDC support
-        run: npm install -g npm@latest
+      - name: Verify npm for OIDC support
+        run: corepack npm@${NPM_VERSION} --version
 
       - name: Install dependencies
-        run: npm ci
+        run: corepack npm@${NPM_VERSION} ci
 
       - name: Build
-        run: npm run build
+        run: corepack npm@${NPM_VERSION} run build
 
       - name: Test
-        run: npm test
+        run: corepack npm@${NPM_VERSION} test
 
       - name: Publish
-        run: npm publish --provenance --access public
+        run: corepack npm@${NPM_VERSION} publish --provenance --access public
 
       - name: Extract release notes from CHANGELOG
         id: release_notes
