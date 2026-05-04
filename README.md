@@ -129,6 +129,9 @@ git-ai-commit config -b https://api.test # set a custom API base URL
 git-ai-commit config --model gpt-4o-mini # set preferred model
 git-ai-commit config --mode openai       # prefer OPENAI_* environment variables
 git-ai-commit config --mode gemini       # use Google Gemini native SDK
+git-ai-commit config --no-reasoning      # disable model thinking/reasoning when supported
+git-ai-commit config --reasoning         # enable model thinking/reasoning when supported
+git-ai-commit config --reasoning-effort low  # set reasoning effort when supported
 git-ai-commit config --co-author "Name <email>"  # add Co-authored-by trailer to commits
 git-ai-commit config --no-co-author      # remove Co-authored-by trailer
 ```
@@ -147,6 +150,9 @@ Set the following variables (e.g., in a local `.env` file) before using the CLI:
 - Credentials: `AI_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` (priority depends on the selected mode).
 - Base URLs: `AI_BASE_URL` or `OPENAI_BASE_URL` (not used in `gemini` mode).
 - Models: `AI_MODEL` or `OPENAI_MODEL` (priority matches the selected mode).
+- Reasoning toggle: `AI_REASONING` or `OPENAI_REASONING` (`true`/`false`, `on`/`off`, `enabled`/`disabled`). When omitted, the provider/model default is used.
+
+Reasoning support is provider-specific. For OpenAI-compatible Z.AI GLM models, the toggle is sent as `thinking.type` (`enabled` or `disabled`). In Gemini native mode, disabling reasoning sets `thinkingBudget` to `0`.
 
 ## Development Commands
 
