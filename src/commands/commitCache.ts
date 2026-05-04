@@ -4,6 +4,8 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
 interface CacheKeyInput {
   diff: string;
   prompt?: string;
@@ -44,6 +46,49 @@ function getProjectIdentifier(): string {
   return process.cwd();
 }
 
+function isCacheEntry(value: unknown): value is CommitMessageCacheEntry {
+  if (typeof value !== 'object' || value === null) {
+    return false;
+  }
+
+  const entry = value as Partial<CommitMessageCacheEntry>;
+  return entry.version === 1
+    && typeof entry.key === 'string'
+    && typeof entry.message === 'string'
+    && typeof entry.timestamp === 'string'
+    && typeof entry.project === 'string';
+}
+
+function isFresh(entry: CommitMessageCacheEntry, now = Date.now()): boolean {
+  const timestamp = Date.parse(entry.timestamp);
+  return Number.isFinite(timestamp) && now - timestamp <= CACHE_TTL_MS;
+}
+
+async function readFreshEntries(): Promise<CommitMessageCacheEntry[]> {
+  try {
+    const file = getCachePath();
+    const raw = await fs.readFile(file, 'utf-8');
+    const entries = raw
+      .split('\n')
+      .filter(Boolean)
+      .map(line => {
+        try {
+          const parsed = JSON.parse(line) as unknown;
+          return isCacheEntry(parsed) ? parsed : undefined;
+        } catch {
+          return undefined;
+        }
+      })
+      .filter((entry): entry is CommitMessageCacheEntry => Boolean(entry))
+      .filter(entry => isFresh(entry));
+
+    await fs.writeFile(file, entries.map(entry => JSON.stringify(entry)).join('\n') + (entries.length > 0 ? '\n' : ''), 'utf-8');
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
 export class CommitMessageCacheService {
   static createKey(input: CacheKeyInput): string {
     const project = getProjectIdentifier();
@@ -59,31 +104,17 @@ export class CommitMessageCacheService {
   }
 
   static async find(key: string): Promise<string | undefined> {
-    try {
-      const raw = await fs.readFile(getCachePath(), 'utf-8');
-      const lines = raw.split('\n').filter(Boolean).reverse();
-
-      for (const line of lines) {
-        try {
-          const entry = JSON.parse(line) as Partial<CommitMessageCacheEntry>;
-          if (entry.version === 1 && entry.key === key && typeof entry.message === 'string') {
-            return entry.message;
-          }
-        } catch {
-          // Ignore malformed cache rows.
-        }
-      }
-    } catch {
-      return undefined;
-    }
-
-    return undefined;
+    const entries = await readFreshEntries();
+    const entry = [...entries].reverse().find(candidate => candidate.key === key);
+    return entry?.message;
   }
 
   static async save(key: string, message: string): Promise<void> {
     try {
       const file = getCachePath();
       await fs.mkdir(path.dirname(file), { recursive: true });
+
+      await readFreshEntries();
 
       const entry: CommitMessageCacheEntry = {
         version: 1,
