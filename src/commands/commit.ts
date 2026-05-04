@@ -7,6 +7,7 @@ import { GitService, GitDiffResult } from "./git";
 import { AIService, AIServiceConfig } from "./ai";
 import { ConfigService } from "./config";
 import { LogService } from "./log";
+import { CommitMessageCacheService } from "./commitCache";
 
 export interface CommitOptions {
   apiKey?: string;
@@ -158,28 +159,6 @@ export class CommitCommand {
         }
       };
 
-      ConfigService.validateConfig({
-        apiKey: mergedApiKey,
-        language: existingConfig.language,
-      });
-
-      const aiConfig: AIServiceConfig = {
-        apiKey: mergedApiKey!,
-        baseURL: mergedBaseURL,
-        model: mergedModel,
-        fallbackModel: existingConfig.fallbackModel,
-        fallbackMode: existingConfig.fallbackMode,
-        fallbackApiKey: existingConfig.fallbackApiKey,
-        fallbackBaseURL: existingConfig.fallbackBaseURL,
-        providerPriority: existingConfig.providerPriority,
-        reasoning: existingConfig.reasoning,
-        reasoningEffort: existingConfig.reasoningEffort,
-        language: existingConfig.language,
-        verbose: !messageOnly,
-        mode: existingConfig.mode,
-        maxCompletionTokens: existingConfig.maxCompletionTokens,
-      };
-
       log("Getting staged changes...");
 
       const diffResult: GitDiffResult = await GitService.getStagedDiff();
@@ -202,38 +181,75 @@ export class CommitCommand {
         console.log(stat);
       }
 
-      log("Generating commit message...");
+      const cacheKey = CommitMessageCacheService.createKey({
+        diff: diffResult.diff!,
+        prompt: options.prompt,
+        language: existingConfig.language,
+      });
+      let message = await CommitMessageCacheService.find(cacheKey);
 
-      const aiService = new AIService(aiConfig);
-      const aiResult = await aiService.generateCommitMessage(
-        diffResult.diff!,
-        options.prompt
-      );
-
-      if (!aiResult.success) {
-        console.error("Error:", aiResult.error);
-        await LogService.append({
-          command: "commit",
-          args: safeArgs,
-          status: "failure",
-          details: aiResult.error,
-          durationMs: Date.now() - start,
-          model: mergedModel,
+      if (message) {
+        log(`Using cached commit message (${cacheKey.slice(0, 8)})...`);
+      } else {
+        ConfigService.validateConfig({
+          apiKey: mergedApiKey,
+          language: existingConfig.language,
         });
-        process.exit(1);
-      }
 
-      if (typeof aiResult.message !== "string") {
-        console.error("Error: Failed to generate commit message");
-        process.exit(1);
-      }
+        const aiConfig: AIServiceConfig = {
+          apiKey: mergedApiKey!,
+          baseURL: mergedBaseURL,
+          model: mergedModel,
+          fallbackModel: existingConfig.fallbackModel,
+          fallbackMode: existingConfig.fallbackMode,
+          fallbackApiKey: existingConfig.fallbackApiKey,
+          fallbackBaseURL: existingConfig.fallbackBaseURL,
+          providerPriority: existingConfig.providerPriority,
+          reasoning: existingConfig.reasoning,
+          reasoningEffort: existingConfig.reasoningEffort,
+          language: existingConfig.language,
+          verbose: !messageOnly,
+          mode: existingConfig.mode,
+          maxCompletionTokens: existingConfig.maxCompletionTokens,
+        };
 
+        log("Generating commit message...");
+
+        const aiService = new AIService(aiConfig);
+        const aiResult = await aiService.generateCommitMessage(
+          diffResult.diff!,
+          options.prompt
+        );
+
+        if (!aiResult.success) {
+          console.error("Error:", aiResult.error);
+          await LogService.append({
+            command: "commit",
+            args: safeArgs,
+            status: "failure",
+            details: aiResult.error,
+            durationMs: Date.now() - start,
+            model: mergedModel,
+          });
+          process.exit(1);
+          return;
+        }
+
+        if (typeof aiResult.message !== "string") {
+          console.error("Error: Failed to generate commit message");
+          process.exit(1);
+          return;
+        }
+
+        message = aiResult.message;
+        await CommitMessageCacheService.save(cacheKey, message);
+      }
 
       if (existingConfig.coAuthor) {
-        aiResult.message = `${aiResult.message}\n\nCo-authored-by: ${existingConfig.coAuthor}`;
+        message = `${message}\n\nCo-authored-by: ${existingConfig.coAuthor}`;
       }
       if (messageOnly) {
-        console.log(aiResult.message);
+        console.log(message);
         await LogService.append({
           command: "commit",
           args: { ...safeArgs, messageOnly: true },
@@ -246,7 +262,7 @@ export class CommitCommand {
       }
 
       console.log("\nGenerated commit message:");
-      console.log(aiResult.message);
+      console.log(message);
 
       const confirmed = await this.confirmCommit();
 
@@ -264,14 +280,14 @@ export class CommitCommand {
       }
 
       console.log("\nCreating commit...");
-      let commitSuccess = await GitService.createCommit(aiResult.message!);
+      let commitSuccess = await GitService.createCommit(message);
 
       if (!commitSuccess) {
         const hasModified = await GitService.hasModifiedFiles();
         if (hasModified) {
           console.log("\n🔄 Pre-commit hook modified files (formatter). Re-staging and retrying...");
           await GitService.restageModifiedFiles();
-          commitSuccess = await GitService.createCommit(aiResult.message!, true);
+          commitSuccess = await GitService.createCommit(message, true);
         }
       }
 

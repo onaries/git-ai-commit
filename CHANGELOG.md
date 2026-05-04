@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.5 - 2026-05-04
+
+### New Features
+- Cache generated commit messages by staged request hash for reuse when the same commit request is retried
+
+### Improvements
+- Save generated commit messages before user confirmation so cancelled commits can reuse the cached message later
+
+### Testing
+- Add coverage for commit message cache persistence and cached commit reuse
+
 ## 1.2.4 - 2026-03-12
 
 ### New Features
