@@ -5,6 +5,9 @@ import os from 'os';
 import path from 'path';
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CACHE_TTL_DAYS = 7;
+
+export const COMMIT_MESSAGE_CACHE_PROMPT_VERSION = 2;
 
 interface CacheKeyInput {
   diff: string;
@@ -14,10 +17,18 @@ interface CacheKeyInput {
 
 interface CommitMessageCacheEntry {
   version: 1;
+  promptVersion: number;
   key: string;
   message: string;
   timestamp: string;
   project: string;
+}
+
+export interface CommitMessageCacheHit {
+  message: string;
+  timestamp: string;
+  expiresAt: string;
+  daysRemaining: number;
 }
 
 function getStorageDir(): string {
@@ -53,6 +64,7 @@ function isCacheEntry(value: unknown): value is CommitMessageCacheEntry {
 
   const entry = value as Partial<CommitMessageCacheEntry>;
   return entry.version === 1
+    && typeof entry.promptVersion === 'number'
     && typeof entry.key === 'string'
     && typeof entry.message === 'string'
     && typeof entry.timestamp === 'string'
@@ -94,6 +106,7 @@ export class CommitMessageCacheService {
     const project = getProjectIdentifier();
     const payload = JSON.stringify({
       version: 1,
+      promptVersion: COMMIT_MESSAGE_CACHE_PROMPT_VERSION,
       project,
       language: input.language,
       prompt: input.prompt ?? '',
@@ -103,10 +116,22 @@ export class CommitMessageCacheService {
     return createHash('sha256').update(payload).digest('hex');
   }
 
-  static async find(key: string): Promise<string | undefined> {
+  static async find(key: string): Promise<CommitMessageCacheHit | undefined> {
     const entries = await readFreshEntries();
     const entry = [...entries].reverse().find(candidate => candidate.key === key);
-    return entry?.message;
+    if (!entry) {
+      return undefined;
+    }
+
+    const timestamp = Date.parse(entry.timestamp);
+    const expiresAtMs = timestamp + CACHE_TTL_MS;
+
+    return {
+      message: entry.message,
+      timestamp: entry.timestamp,
+      expiresAt: new Date(expiresAtMs).toISOString(),
+      daysRemaining: Math.max(0, Math.ceil((expiresAtMs - Date.now()) / (CACHE_TTL_MS / CACHE_TTL_DAYS)))
+    };
   }
 
   static async save(key: string, message: string): Promise<void> {
@@ -118,6 +143,7 @@ export class CommitMessageCacheService {
 
       const entry: CommitMessageCacheEntry = {
         version: 1,
+        promptVersion: COMMIT_MESSAGE_CACHE_PROMPT_VERSION,
         key,
         message,
         timestamp: new Date().toISOString(),

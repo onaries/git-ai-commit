@@ -4,12 +4,20 @@
 
 ### New Features
 - Cache generated commit messages by staged request hash for reuse when the same commit request is retried
+- Add `--no-cache` and `--refresh` controls for commit message cache usage
+- Include commit cache controls in generated bash/zsh completion scripts
 
 ### Improvements
 - Save generated commit messages before user confirmation so cancelled commits can reuse the cached message later
+- Keep cached commit messages for seven days and show saved/expiration dates on cache hits
+- Version commit-message cache keys by prompt version to avoid reusing stale prompt outputs
+- Harden commit prompt diff handling against instruction-like text inside diffs
+- Normalize generated commit messages by casing headers, trimming trailing periods, and standardizing breaking-change footers
 
 ### Testing
 - Add coverage for commit message cache persistence and cached commit reuse
+- Add coverage for cache controls, prompt-version metadata, prompt rules, and commit message normalization
+- Add coverage for completion scripts exposing commit cache controls
 
 ## 1.2.4 - 2026-03-12
 

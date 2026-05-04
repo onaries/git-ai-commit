@@ -484,7 +484,7 @@ describe('AIService', () => {
       );
 
       const result = await quietService.generateCommitMessage('diff');
-      expect(result).toEqual({ success: true, message: 'chore: chore:' });
+      expect(result).toEqual({ success: true, message: 'feat(scope): real header\n\nbody text' });
     });
 
     it('should find the first header when non-header text comes first', async () => {
@@ -494,7 +494,30 @@ describe('AIService', () => {
       );
 
       const result = await quietService.generateCommitMessage('diff');
-      expect(result).toEqual({ success: true, message: 'fix: This is not a header' });
+      expect(result).toEqual({ success: true, message: 'fix: handle edge case' });
+    });
+
+    it('should normalize header casing and remove trailing periods', async () => {
+      const quietService = new AIService({ apiKey: 'test-api-key', model: 'gpt-4', verbose: false });
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream('Feat(API): Add payment webhook.')
+      );
+
+      const result = await quietService.generateCommitMessage('diff');
+      expect(result).toEqual({ success: true, message: 'feat(api): add payment webhook' });
+    });
+
+    it('should normalize breaking change footers', async () => {
+      const quietService = new AIService({ apiKey: 'test-api-key', model: 'gpt-4', verbose: false });
+      (mockOpenai.chat.completions.create as jest.Mock).mockResolvedValue(
+        createMockStream('feat!: add new config\n\nBreaking change: config file format changed')
+      );
+
+      const result = await quietService.generateCommitMessage('diff');
+      expect(result).toEqual({
+        success: true,
+        message: 'feat!: add new config\n\nBREAKING CHANGE: config file format changed'
+      });
     });
 
     it('should collapse multiple blank lines between header and body', async () => {

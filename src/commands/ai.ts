@@ -59,6 +59,10 @@ interface InitialResponseTimeoutState {
   didTimeout: () => boolean;
 }
 
+const COMMIT_TYPES = 'feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert';
+const COMMIT_HEADER_PATTERN = new RegExp(`^(${COMMIT_TYPES})(\\([a-z0-9._-]+\\))?(!)?:\\s+(.+)$`, 'i');
+const COMMIT_TYPE_ONLY_PATTERN = new RegExp(`^(${COMMIT_TYPES})(\\([a-z0-9._-]+\\))?(!)?:\\s*$`, 'i');
+
 export class AIService {
   private openai: OpenAI | null = null;
   private gemini: GoogleGenAI | null = null;
@@ -910,6 +914,123 @@ export class AIService {
     return cleaned;
   }
 
+  private guessCommitType(description: string): string {
+    const normalized = description.toLowerCase();
+
+    if (normalized.includes('version') || normalized.includes('update')) {
+      return 'chore';
+    }
+    if (normalized.includes('feature') || normalized.includes('add')) {
+      return 'feat';
+    }
+    if (normalized.includes('fix') || normalized.includes('bug')) {
+      return 'fix';
+    }
+
+    return 'chore';
+  }
+
+  private normalizeCommitDescription(description: string): string {
+    const normalized = description
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/[.。]+$/g, '');
+
+    if (!normalized) {
+      return 'update changes';
+    }
+
+    return normalized.replace(/^[A-Z]/, first => first.toLowerCase());
+  }
+
+  private normalizeCommitHeader(header: string): string | undefined {
+    const match = header.match(COMMIT_HEADER_PATTERN);
+    if (!match) {
+      return undefined;
+    }
+
+    const type = match[1].toLowerCase();
+    const scope = match[2]?.toLowerCase() ?? '';
+    const breaking = match[3] ?? '';
+    const description = this.normalizeCommitDescription(match[4]);
+
+    return `${type}${scope}${breaking}: ${description}`;
+  }
+
+  private normalizeBreakingChangeFooter(line: string): string {
+    return line.replace(/^BREAKING[-\s]CHANGE:\s*/i, 'BREAKING CHANGE: ');
+  }
+
+  private normalizeCommitMessage(message: string): string {
+    let finalMessage = this.cleanMessage(
+      message.replace(/^(The commit message is:|Commit message:|Message:)\s*/i, '')
+    );
+
+    let lines = finalMessage
+      .split('\n')
+      .map(line => line.replace(/[\s\t]+$/, ''))
+      .filter(line => !/^```/.test(line.trim()));
+
+    while (lines.length > 0 && lines[0].trim() === '') {
+      lines.shift();
+    }
+
+    while (lines.length > 0 && COMMIT_TYPE_ONLY_PATTERN.test(lines[0].trim())) {
+      lines.shift();
+      while (lines.length > 0 && lines[0].trim() === '') {
+        lines.shift();
+      }
+    }
+
+    const firstHeaderIdx = lines.findIndex(line => COMMIT_HEADER_PATTERN.test(line.trim()));
+    if (firstHeaderIdx > 0) {
+      lines = lines.slice(firstHeaderIdx);
+    }
+
+    if (lines.length === 0) {
+      return 'chore: update changes';
+    }
+
+    const dupTypePrefix = new RegExp(`^(${COMMIT_TYPES}):\\s+(${COMMIT_TYPES})(\\([a-z0-9._-]+\\))?(!)?:\\s+(.+)$`, 'i');
+    const duplicateMatch = lines[0].match(dupTypePrefix);
+    if (duplicateMatch) {
+      lines[0] = `${duplicateMatch[2]}${duplicateMatch[3] ?? ''}${duplicateMatch[4] ?? ''}: ${duplicateMatch[5]}`;
+    }
+
+    const normalizedHeader = this.normalizeCommitHeader(lines[0].trim());
+    if (normalizedHeader) {
+      lines[0] = normalizedHeader;
+    } else {
+      const description = this.normalizeCommitDescription(lines[0]);
+      lines[0] = `${this.guessCommitType(description)}: ${description}`;
+    }
+
+    lines = lines.map((line, index) => (
+      index === 0 ? line : this.normalizeBreakingChangeFooter(line)
+    ));
+
+    const nextHeaderIdx = lines.slice(1).findIndex(line => COMMIT_HEADER_PATTERN.test(line.trim()));
+    if (nextHeaderIdx >= 0) {
+      lines = lines.slice(0, nextHeaderIdx + 1);
+    }
+
+    if (lines.length > 1 && lines[0].trim().length > 0) {
+      let index = 1;
+      let blankCount = 0;
+      while (index < lines.length && lines[index].trim() === '') {
+        blankCount++;
+        index++;
+      }
+      if (blankCount > 1) {
+        lines.splice(1, blankCount - 1);
+      }
+    }
+
+    finalMessage = lines.join('\n').trim();
+
+    return finalMessage || 'chore: update changes';
+  }
+
   async generateCommitMessage(diff: string, extraInstructions?: string): Promise<CommitGenerationResult> {
     try {
       this.debugLog('Sending request to AI API...');
@@ -951,85 +1072,7 @@ export class AIService {
         };
       }
 
-      // Clean up the message
-      finalMessage = finalMessage.replace(/^(The commit message is:|Commit message:|Message:)\s*/, '');
-      
-      // Ensure it follows conventional commit format
-      if (!finalMessage.match(/^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?: .+/)) {
-        // If it doesn't match the format, try to fix it
-        if (finalMessage.includes('version') || finalMessage.includes('update')) {
-          finalMessage = `chore: ${finalMessage}`;
-        } else if (finalMessage.includes('feature') || finalMessage.includes('add')) {
-          finalMessage = `feat: ${finalMessage}`;
-        } else if (finalMessage.includes('fix') || finalMessage.includes('bug')) {
-          finalMessage = `fix: ${finalMessage}`;
-        } else {
-          finalMessage = `chore: ${finalMessage}`;
-        }
-      }
-
-      // Clean and normalize formatting/artifacts that sometimes appear
-      finalMessage = this.cleanMessage(finalMessage);
-
-      // If the model produced a stray type-only line (e.g., "chore:" on its own), drop it
-      let lines = finalMessage.split('\n').map(l => l.replace(/[\s\t]+$/,'')).filter(l => l !== undefined) as string[];
-      const headerPattern = /^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?:\s+.+/;
-      const typeOnlyPattern = /^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?:\s*$/;
-
-      // Remove Markdown code fences and trim surrounding whitespace
-      lines = lines.filter(l => !/^```/.test(l));
-
-      // Trim leading blank lines
-      while (lines.length && lines[0].trim() === '') lines.shift();
-
-      // Remove any leading type-only lines until we hit a real header or content
-      while (lines.length && typeOnlyPattern.test(lines[0])) {
-        lines.shift();
-        while (lines.length && lines[0].trim() === '') lines.shift();
-      }
-
-      // If the first non-empty line is not a header, but a header exists later, start from that header
-      const firstHeaderIdx = lines.findIndex(l => headerPattern.test(l));
-      if (firstHeaderIdx > 0) {
-        lines = lines.slice(firstHeaderIdx);
-      }
-
-      // If the first line has a duplicated type prefix like "chore: docs(scope): ...", trim the outer prefix
-      if (lines.length > 0) {
-        const dupTypePrefix = /^(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert):\s+(feat|fix|docs|style|refactor|test|chore|build|ci|perf|revert)(\(.+\))?!?:\s+(.+)/;
-        const m = lines[0].match(dupTypePrefix);
-        if (m) {
-          // Keep the inner proper header
-          const innerType = m[2];
-          // Rebuild as `${innerType}${scope}: ${desc}`
-          lines[0] = `${innerType}${m[3] ?? ''}: ${m[4]}`;
-        }
-      }
-
-      // Ensure only a single blank line between header and body if body exists
-      if (lines.length > 1 && lines[0].trim().length > 0) {
-        // Collapse multiple blank lines immediately after header to one
-        let i = 1;
-        let blankCount = 0;
-        while (i < lines.length && lines[i].trim() === '') {
-          blankCount++;
-          i++;
-        }
-        if (blankCount > 1) {
-          // Keep exactly one blank line
-          lines.splice(1, blankCount - 1);
-        }
-      }
-
-      // Drop additional commit headers to enforce a single conventional commit
-      if (lines.length > 0) {
-        const nextHeaderIdx = lines.slice(1).findIndex(l => headerPattern.test(l));
-        if (nextHeaderIdx >= 0) {
-          lines = lines.slice(0, nextHeaderIdx + 1);
-        }
-      }
-
-      finalMessage = lines.join('\n').trim();
+      finalMessage = this.normalizeCommitMessage(finalMessage);
 
       return {
         success: true,

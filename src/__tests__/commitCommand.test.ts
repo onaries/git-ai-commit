@@ -5,6 +5,12 @@ import readline from 'readline';
 import { CommitMessageCacheService } from '../commands/commitCache';
 
 const mockGenerateCommitMessage = jest.fn();
+const cachedMessageHit = {
+  message: 'fix: cached commit',
+  timestamp: '2026-05-04T00:00:00.000Z',
+  expiresAt: '2026-05-11T00:00:00.000Z',
+  daysRemaining: 7
+};
 
 jest.mock('../commands/git', () => ({
   GitService: {
@@ -120,19 +126,62 @@ describe('CommitCommand', () => {
   });
 
   it('should reuse cached message for the same staged request', async () => {
-    (CommitMessageCacheService.find as jest.Mock).mockResolvedValue('fix: cached commit');
+    (CommitMessageCacheService.find as jest.Mock).mockResolvedValue(cachedMessageHit);
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
+    const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const command = createCommand();
     jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
 
-    await (command as any).handleCommit({});
+    try {
+      await (command as any).handleCommit({});
 
-    expect(mockGenerateCommitMessage).not.toHaveBeenCalled();
+      expect(mockGenerateCommitMessage).not.toHaveBeenCalled();
+      expect(CommitMessageCacheService.save).not.toHaveBeenCalled();
+      expect(ConfigService.validateConfig).not.toHaveBeenCalled();
+      expect(GitService.createCommit).toHaveBeenCalledWith('fix: cached commit');
+      expect(logSpy).toHaveBeenCalledWith(
+        expect.stringContaining('saved 2026-05-04, expires 2026-05-11')
+      );
+      expect(exitSpy).not.toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it('should skip cache reads and writes when cache is disabled', async () => {
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
+
+    await (command as any).handleCommit({ cache: false });
+
+    expect(CommitMessageCacheService.createKey).not.toHaveBeenCalled();
+    expect(CommitMessageCacheService.find).not.toHaveBeenCalled();
     expect(CommitMessageCacheService.save).not.toHaveBeenCalled();
-    expect(ConfigService.validateConfig).not.toHaveBeenCalled();
-    expect(GitService.createCommit).toHaveBeenCalledWith('fix: cached commit');
-    expect(exitSpy).not.toHaveBeenCalled();
+    expect(mockGenerateCommitMessage).toHaveBeenCalledWith(
+      'diff --git a/file b/file',
+      undefined
+    );
+  });
+
+  it('should refresh cached messages when refresh is requested', async () => {
+    (CommitMessageCacheService.find as jest.Mock).mockResolvedValue(cachedMessageHit);
+
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
+
+    await (command as any).handleCommit({ refresh: true });
+
+    expect(CommitMessageCacheService.createKey).toHaveBeenCalled();
+    expect(CommitMessageCacheService.find).not.toHaveBeenCalled();
+    expect(mockGenerateCommitMessage).toHaveBeenCalledWith(
+      'diff --git a/file b/file',
+      undefined
+    );
+    expect(CommitMessageCacheService.save).toHaveBeenCalledWith(
+      'cache-key-12345678',
+      'feat: test commit'
+    );
   });
 
   it('should output message only without git actions when message-only option is set', async () => {

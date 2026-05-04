@@ -39,7 +39,7 @@ _git_ai_commit() {
     local global_opts="-v --version -h --help"
 
     # Command-specific options
-    local commit_opts="-k --api-key -b --base-url --model -m --message-only -p --push --prompt --no-verify"
+    local commit_opts="-k --api-key -b --base-url --model -m --message-only -p --push --prompt --no-cache --refresh --no-verify"
     local config_opts="-s --show -l --language --auto-push --no-auto-push -k --api-key -b --base-url -m --model --fallback-model --fallback-mode --fallback-api-key --fallback-base-url --provider-priority --reasoning --no-reasoning --reasoning-effort --mode --co-author --no-co-author --max-tokens"
     local pr_opts="--base --compare -k --api-key -b --base-url --model"
     local tag_opts="-k --api-key --base-url -m --model --message -t --base-tag --prompt"
@@ -190,6 +190,8 @@ _git-ai-commit() {
                         '-p[Push after creating the commit]' \\
                         '--push[Push after creating the commit]' \\
                         '--prompt[Additional AI prompt instructions]:text:' \\
+                        '--no-cache[Disable commit message cache for this run]' \\
+                        '--refresh[Ignore cached commit message and generate a fresh one]' \\
                         '--no-verify[Skip pre-commit hooks]'
                     ;;
                 config)

@@ -17,6 +17,8 @@ export interface CommitOptions {
   messageOnly?: boolean;
   prompt?: string;
   verify?: boolean;
+  cache?: boolean;
+  refresh?: boolean;
 }
 
 export class CommitCommand {
@@ -39,6 +41,14 @@ export class CommitCommand {
       .option(
         "--prompt <text>",
         "Additional instructions to append to the AI prompt for this commit"
+      )
+      .option(
+        "--no-cache",
+        "Disable commit message cache for this run"
+      )
+      .option(
+        "--refresh",
+        "Ignore cached commit message and generate a fresh one"
       )
       .option(
         "--no-verify",
@@ -152,6 +162,8 @@ export class CommitCommand {
       const mergedBaseURL = options.baseURL || existingConfig.baseURL;
       const mergedModel = options.model || existingConfig.model;
       const messageOnly = Boolean(options.messageOnly);
+      const cacheEnabled = options.cache !== false;
+      const refreshCache = Boolean(options.refresh);
 
       const log = (...args: unknown[]) => {
         if (!messageOnly) {
@@ -181,16 +193,25 @@ export class CommitCommand {
         console.log(stat);
       }
 
-      const cacheKey = CommitMessageCacheService.createKey({
-        diff: diffResult.diff!,
-        prompt: options.prompt,
-        language: existingConfig.language,
-      });
-      let message = await CommitMessageCacheService.find(cacheKey);
+      const cacheKey = cacheEnabled
+        ? CommitMessageCacheService.createKey({
+          diff: diffResult.diff!,
+          prompt: options.prompt,
+          language: existingConfig.language,
+        })
+        : undefined;
+      const cacheHit = cacheKey && !refreshCache
+        ? await CommitMessageCacheService.find(cacheKey)
+        : undefined;
+      let message = cacheHit?.message;
 
-      if (message) {
-        log(`Using cached commit message (${cacheKey.slice(0, 8)})...`);
+      if (cacheHit && cacheKey) {
+        log(`Using cached commit message (${cacheKey.slice(0, 8)}, saved ${this.formatCacheDate(cacheHit.timestamp)}, expires ${this.formatCacheDate(cacheHit.expiresAt)})...`);
       } else {
+        if (cacheKey && refreshCache) {
+          log(`Refreshing cached commit message (${cacheKey.slice(0, 8)})...`);
+        }
+
         ConfigService.validateConfig({
           apiKey: mergedApiKey,
           language: existingConfig.language,
@@ -242,7 +263,15 @@ export class CommitCommand {
         }
 
         message = aiResult.message;
-        await CommitMessageCacheService.save(cacheKey, message);
+        if (cacheKey) {
+          await CommitMessageCacheService.save(cacheKey, message);
+        }
+      }
+
+      if (typeof message !== "string") {
+        console.error("Error: Failed to generate commit message");
+        process.exit(1);
+        return;
       }
 
       if (existingConfig.coAuthor) {
@@ -370,6 +399,10 @@ export class CommitCommand {
 
     const normalized = answer.trim().toLowerCase();
     return normalized === "y" || normalized === "yes";
+  }
+
+  private formatCacheDate(value: string): string {
+    return value.slice(0, 10);
   }
 
   getCommand(): Command {

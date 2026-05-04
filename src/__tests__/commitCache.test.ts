@@ -2,7 +2,10 @@ import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
 
-import { CommitMessageCacheService } from '../commands/commitCache';
+import {
+  COMMIT_MESSAGE_CACHE_PROMPT_VERSION,
+  CommitMessageCacheService
+} from '../commands/commitCache';
 
 describe('CommitMessageCacheService', () => {
   let tempDir: string;
@@ -31,9 +34,30 @@ describe('CommitMessageCacheService', () => {
 
     await CommitMessageCacheService.save(key, 'feat: cached message');
 
-    await expect(CommitMessageCacheService.find(key)).resolves.toBe('feat: cached message');
+    await expect(CommitMessageCacheService.find(key)).resolves.toEqual(
+      expect.objectContaining({
+        message: 'feat: cached message',
+        daysRemaining: expect.any(Number),
+        expiresAt: expect.any(String),
+        timestamp: expect.any(String)
+      })
+    );
   });
 
+  it('stores the prompt version with cache entries', async () => {
+    const key = CommitMessageCacheService.createKey({
+      diff: 'diff --git a/file b/file',
+      language: 'ko'
+    });
+
+    await CommitMessageCacheService.save(key, 'feat: cached message');
+
+    const cachePath = path.join(tempDir, 'commit-message-cache.jsonl');
+    const raw = await fs.readFile(cachePath, 'utf-8');
+    const entry = JSON.parse(raw.trim()) as { promptVersion?: number };
+
+    expect(entry.promptVersion).toBe(COMMIT_MESSAGE_CACHE_PROMPT_VERSION);
+  });
 
   it('ignores and removes cached messages older than seven days', async () => {
     const key = CommitMessageCacheService.createKey({
@@ -43,14 +67,14 @@ describe('CommitMessageCacheService', () => {
     const cachePath = path.join(tempDir, 'commit-message-cache.jsonl');
     const expiredEntry = {
       version: 1,
+      promptVersion: COMMIT_MESSAGE_CACHE_PROMPT_VERSION,
       key,
       message: 'feat: expired message',
       timestamp: new Date(Date.now() - 8 * 24 * 60 * 60 * 1000).toISOString(),
       project: process.cwd()
     };
 
-    await fs.writeFile(cachePath, `${JSON.stringify(expiredEntry)}
-`, 'utf-8');
+    await fs.writeFile(cachePath, `${JSON.stringify(expiredEntry)}\n`, 'utf-8');
 
     await expect(CommitMessageCacheService.find(key)).resolves.toBeUndefined();
     await expect(fs.readFile(cachePath, 'utf-8')).resolves.toBe('');
@@ -64,16 +88,18 @@ describe('CommitMessageCacheService', () => {
     const cachePath = path.join(tempDir, 'commit-message-cache.jsonl');
     const freshEntry = {
       version: 1,
+      promptVersion: COMMIT_MESSAGE_CACHE_PROMPT_VERSION,
       key,
       message: 'feat: fresh message',
       timestamp: new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString(),
       project: process.cwd()
     };
 
-    await fs.writeFile(cachePath, `${JSON.stringify(freshEntry)}
-`, 'utf-8');
+    await fs.writeFile(cachePath, `${JSON.stringify(freshEntry)}\n`, 'utf-8');
 
-    await expect(CommitMessageCacheService.find(key)).resolves.toBe('feat: fresh message');
+    await expect(CommitMessageCacheService.find(key)).resolves.toEqual(
+      expect.objectContaining({ message: 'feat: fresh message' })
+    );
     await expect(fs.readFile(cachePath, 'utf-8')).resolves.toContain('feat: fresh message');
   });
 
