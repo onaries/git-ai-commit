@@ -2,8 +2,9 @@ import { Command } from 'commander';
 import readline from 'readline';
 import { AIService, AIServiceConfig } from './ai';
 import { ConfigService } from './config';
-import { GitService } from './git';
+import { GitService, GitPushResult } from './git';
 import { LogService } from './log';
+import { parseSuggestedCommand, runSuggestedCommand } from './remoteHookFix';
 
 export interface TagOptions {
   apiKey?: string;
@@ -438,9 +439,21 @@ export class TagCommand {
 
           for (const remote of selectedRemotes) {
             console.log(`Force pushing tag ${trimmedName} to ${remote}...`);
-            const pushSuccess = await GitService.forcePushTag(trimmedName, remote);
+            let pushResult = await GitService.forcePushTag(trimmedName, remote);
 
-            if (pushSuccess) {
+            if (!pushResult.success) {
+              const fixed = await this.tryFixRemoteHookFailure(
+                trimmedName,
+                remote,
+                pushResult.output,
+                () => GitService.forcePushTag(trimmedName, remote)
+              );
+              if (fixed) {
+                pushResult = { success: true };
+              }
+            }
+
+            if (pushResult.success) {
               console.log(`✅ Tag ${trimmedName} force pushed to ${remote} successfully!`);
             } else {
               console.error(`❌ Failed to force push tag to ${remote}`);
@@ -456,18 +469,31 @@ export class TagCommand {
         } else {
           for (const remote of selectedRemotes) {
             console.log(`Pushing tag ${trimmedName} to ${remote}...`);
-            let pushSuccess = await GitService.pushTagToRemote(trimmedName, remote);
+            let pushResult = await GitService.pushTagToRemote(trimmedName, remote);
 
-            if (!pushSuccess) {
-              console.log(`⚠️  Normal push failed for ${remote}. Force push may be required.`);
-              const shouldForcePush = await this.confirmForcePush(trimmedName);
+            if (!pushResult.success) {
+              // A remote pre-push hook may have rejected the push with a hint
+              // command (e.g. `make release-tag TAG=...`). Try to run it, then retry.
+              const fixed = await this.tryFixRemoteHookFailure(
+                trimmedName,
+                remote,
+                pushResult.output,
+                () => GitService.pushTagToRemote(trimmedName, remote)
+              );
 
-              if (shouldForcePush) {
-                console.log(`Force pushing tag ${trimmedName} to ${remote}...`);
-                pushSuccess = await GitService.forcePushTag(trimmedName, remote);
+              if (fixed) {
+                pushResult = { success: true };
+              } else {
+                console.log(`⚠️  Normal push failed for ${remote}. Force push may be required.`);
+                const shouldForcePush = await this.confirmForcePush(trimmedName);
+
+                if (shouldForcePush) {
+                  console.log(`Force pushing tag ${trimmedName} to ${remote}...`);
+                  pushResult = await GitService.forcePushTag(trimmedName, remote);
+                }
               }
             }
-            if (pushSuccess) {
+            if (pushResult.success) {
               console.log(`✅ Tag ${trimmedName} pushed to ${remote} successfully!`);
             } else {
               console.error(`❌ Failed to push tag to ${remote}`);
@@ -687,6 +713,66 @@ export class TagCommand {
 
     const normalized = answer.trim().toLowerCase();
     return normalized === 'y' || normalized === 'yes';
+  }
+
+  private async confirmRunSuggestedCommand(command: string): Promise<boolean> {
+    if (this.autoConfirm) return true;
+    const rl = readline.createInterface({
+      input: process.stdin,
+      output: process.stdout
+    });
+
+    const answer: string = await new Promise(resolve => {
+      rl.question(`Run this command and retry the push? (y/n): `, resolve);
+    });
+
+    rl.close();
+
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  }
+
+  /**
+   * When a push is rejected by a remote hook, try to recover automatically:
+   * parse a suggested fix command from the hook output, confirm with the user,
+   * run it, then retry the push. Returns true only if the retry succeeds.
+   */
+  private async tryFixRemoteHookFailure(
+    tagName: string,
+    remote: string,
+    output: string | undefined,
+    retryPush: () => Promise<GitPushResult>
+  ): Promise<boolean> {
+    const suggested = parseSuggestedCommand(output);
+    if (!suggested) {
+      return false;
+    }
+
+    console.log(`\n💡 Remote rejected the push but suggested a fix command:`);
+    console.log(`   ${suggested}`);
+
+    const shouldRun = await this.confirmRunSuggestedCommand(suggested);
+    if (!shouldRun) {
+      return false;
+    }
+
+    console.log(`Running: ${suggested}`);
+    const result = await runSuggestedCommand(suggested);
+    if (result.output) {
+      console.log(result.output);
+    }
+
+    if (!result.success) {
+      console.error(`❌ Suggested command failed. Skipping retry.`);
+      return false;
+    }
+
+    console.log(`✅ Command completed. Retrying push of ${tagName} to ${remote}...`);
+    const retry = await retryPush();
+    if (!retry.success && retry.output) {
+      console.error(retry.output);
+    }
+    return retry.success;
   }
 
   getCommand(): Command {

@@ -95,6 +95,29 @@ export interface GitLogResult {
   error?: string;
 }
 
+export interface GitPushResult {
+  success: boolean;
+  /** Combined stdout/stderr from the push command (useful when a remote hook rejects the push). */
+  output?: string;
+}
+
+/** Extract the combined stdout/stderr (or message) from a failed child_process error. */
+const extractCommandOutput = (error: unknown): string => {
+  if (error && typeof error === 'object') {
+    const e = error as { stderr?: unknown; stdout?: unknown; message?: unknown };
+    const parts = [e.stdout, e.stderr]
+      .map(part => (part == null ? '' : String(part).trim()))
+      .filter(part => part.length > 0);
+    if (parts.length > 0) {
+      return parts.join('\n');
+    }
+    if (typeof e.message === 'string' && e.message.length > 0) {
+      return e.message;
+    }
+  }
+  return error instanceof Error ? error.message : String(error);
+};
+
 export class GitService {
   static async getStagedDiff(): Promise<GitDiffResult> {
     try {
@@ -384,13 +407,14 @@ export class GitService {
     }
   }
 
-  static async forcePushTag(tagName: string, remote = 'origin'): Promise<boolean> {
+  static async forcePushTag(tagName: string, remote = 'origin'): Promise<GitPushResult> {
     try {
       await execFileAsync('git', ['push', remote, tagName, '--force']);
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error(`Failed to force push tag to ${remote}:`, error instanceof Error ? error.message : error);
-      return false;
+      const output = extractCommandOutput(error);
+      console.error(`Failed to force push tag to ${remote}:`, output);
+      return { success: false, output };
     }
   }
 
@@ -407,13 +431,14 @@ export class GitService {
     }
   }
 
-  static async pushTagToRemote(tagName: string, remote: string): Promise<boolean> {
+  static async pushTagToRemote(tagName: string, remote: string): Promise<GitPushResult> {
     try {
       await execFileAsync('git', ['push', remote, tagName]);
-      return true;
+      return { success: true };
     } catch (error) {
-      console.error(`Failed to push tag to ${remote}:`, error instanceof Error ? error.message : error);
-      return false;
+      const output = extractCommandOutput(error);
+      console.error(`Failed to push tag to ${remote}:`, output);
+      return { success: false, output };
     }
   }
 

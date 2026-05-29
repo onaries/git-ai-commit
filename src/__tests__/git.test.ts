@@ -444,19 +444,19 @@ describe('GitService', () => {
 
     it('forcePushTag succeeds with default remote', async () => {
       resolveExecFile();
-      await expect(GitService.forcePushTag('v1.0.0')).resolves.toBe(true);
+      await expect(GitService.forcePushTag('v1.0.0')).resolves.toEqual({ success: true });
       expect(mockExecFile).toHaveBeenCalledWith('git', ['push', 'origin', 'v1.0.0', '--force'], expect.any(Function));
     });
 
     it('forcePushTag succeeds with custom remote', async () => {
       resolveExecFile();
-      await expect(GitService.forcePushTag('v1.0.0', 'upstream')).resolves.toBe(true);
+      await expect(GitService.forcePushTag('v1.0.0', 'upstream')).resolves.toEqual({ success: true });
       expect(mockExecFile).toHaveBeenCalledWith('git', ['push', 'upstream', 'v1.0.0', '--force'], expect.any(Function));
     });
 
     it('forcePushTag fails', async () => {
       rejectExecFile('force push failed');
-      await expect(GitService.forcePushTag('v1.0.0')).resolves.toBe(false);
+      await expect(GitService.forcePushTag('v1.0.0')).resolves.toMatchObject({ success: false });
     });
 
     it('getRemotes returns remote names', async () => {
@@ -472,13 +472,13 @@ describe('GitService', () => {
 
     it('pushTagToRemote succeeds', async () => {
       resolveExecFile();
-      await expect(GitService.pushTagToRemote('v1.0.0', 'upstream')).resolves.toBe(true);
+      await expect(GitService.pushTagToRemote('v1.0.0', 'upstream')).resolves.toEqual({ success: true });
       expect(mockExecFile).toHaveBeenCalledWith('git', ['push', 'upstream', 'v1.0.0'], expect.any(Function));
     });
 
     it('pushTagToRemote fails', async () => {
       rejectExecFile('push to remote failed');
-      await expect(GitService.pushTagToRemote('v1.0.0', 'upstream')).resolves.toBe(false);
+      await expect(GitService.pushTagToRemote('v1.0.0', 'upstream')).resolves.toMatchObject({ success: false });
     });
 
     it('deleteRemoteTagFrom succeeds', async () => {

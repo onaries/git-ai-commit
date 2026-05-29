@@ -39,6 +39,15 @@ jest.mock('../commands/config', () => ({
   }
 }));
 
+jest.mock('../commands/remoteHookFix', () => ({
+  parseSuggestedCommand: jest.fn(),
+  runSuggestedCommand: jest.fn()
+}));
+
+import { parseSuggestedCommand, runSuggestedCommand } from '../commands/remoteHookFix';
+const mockParseSuggestedCommand = parseSuggestedCommand as jest.Mock;
+const mockRunSuggestedCommand = runSuggestedCommand as jest.Mock;
+
 describe('TagCommand', () => {
   let exitSpy: jest.SpyInstance;
   let confirmSpy: jest.SpyInstance;
@@ -49,6 +58,10 @@ describe('TagCommand', () => {
     (ConfigService.getConfig as jest.Mock).mockReset();
     (ConfigService.validateConfig as jest.Mock).mockReset();
     mockGenerateTagNotes.mockReset();
+    mockParseSuggestedCommand.mockReset();
+    mockRunSuggestedCommand.mockReset();
+    // By default, no remote-hook suggestion is detected (preserve legacy push flow).
+    mockParseSuggestedCommand.mockReturnValue(null);
     exitSpy = jest.spyOn(process, 'exit').mockImplementation((() => undefined) as never);
 
     (ConfigService.getConfig as jest.Mock).mockReturnValue({
@@ -65,10 +78,10 @@ describe('TagCommand', () => {
     (GitService.tagExists as jest.Mock).mockResolvedValue(false);
     (GitService.remoteTagExists as jest.Mock).mockResolvedValue(false);
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
-    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue(true);
+    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue({ success: true });
     (GitService.deleteLocalTag as jest.Mock).mockResolvedValue(true);
     (GitService.deleteRemoteTag as jest.Mock).mockResolvedValue(true);
-    (GitService.forcePushTag as jest.Mock).mockResolvedValue(true);
+    (GitService.forcePushTag as jest.Mock).mockResolvedValue({ success: true });
 
     (GitService.getTagMessage as jest.Mock).mockResolvedValue(null);
     (GitService.getTagBefore as jest.Mock).mockResolvedValue({ success: false, error: 'No earlier tag found.' });
@@ -198,7 +211,7 @@ describe('TagCommand', () => {
 
   it('should push tag when user confirms', async () => {
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
-    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue(true);
+    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue({ success: true });
     (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
     confirmSpy.mockResolvedValueOnce(['origin']);
 
@@ -213,7 +226,7 @@ describe('TagCommand', () => {
 
   it('should ask for force push when normal push fails and user declines', async () => {
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
-    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue(false);
+    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue({ success: false });
     (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
     confirmSpy.mockResolvedValueOnce(['origin']);
     jest
@@ -230,8 +243,8 @@ describe('TagCommand', () => {
 
   it('should force push when normal push fails and user confirms', async () => {
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
-    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue(false);
-    (GitService.forcePushTag as jest.Mock).mockResolvedValue(true);
+    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue({ success: false });
+    (GitService.forcePushTag as jest.Mock).mockResolvedValue({ success: true });
     (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
     confirmSpy.mockResolvedValueOnce(['origin']);
     jest
@@ -243,6 +256,58 @@ describe('TagCommand', () => {
     await (command as any).handleTag('v3.0.0', { message: 'Release notes' });
     expect(GitService.pushTagToRemote).toHaveBeenCalledWith('v3.0.0', 'origin');
     expect(GitService.forcePushTag).toHaveBeenCalledWith('v3.0.0', 'origin');
+  });
+
+  it('should run remote-suggested command and retry push when normal push is rejected', async () => {
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
+    (GitService.pushTagToRemote as jest.Mock)
+      .mockResolvedValueOnce({ success: false, output: 'Create release tags with:\n  make release-tag TAG=v0.1.4-a1' })
+      .mockResolvedValueOnce({ success: true });
+    (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
+    confirmSpy.mockResolvedValueOnce(['origin']);
+
+    mockParseSuggestedCommand.mockReturnValue('make release-tag TAG=v0.1.4-a1');
+    mockRunSuggestedCommand.mockResolvedValue({ success: true, output: 'tag created' });
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmRunSuggestedCommand')
+      .mockResolvedValueOnce(true);
+    const forcePushSpy = jest
+      .spyOn(TagCommand.prototype as any, 'confirmForcePush')
+      .mockResolvedValue(false);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v0.1.4-a1', { message: 'Release notes' });
+
+    expect(mockRunSuggestedCommand).toHaveBeenCalledWith('make release-tag TAG=v0.1.4-a1');
+    expect(GitService.pushTagToRemote).toHaveBeenCalledTimes(2);
+    expect(forcePushSpy).not.toHaveBeenCalled();
+    expect(GitService.forcePushTag).not.toHaveBeenCalled();
+  });
+
+  it('should fall back to force push prompt when suggested command is declined', async () => {
+    (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
+    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue({
+      success: false,
+      output: 'Create release tags with:\n  make release-tag TAG=v0.1.4-a1'
+    });
+    (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
+    confirmSpy.mockResolvedValueOnce(['origin']);
+
+    mockParseSuggestedCommand.mockReturnValue('make release-tag TAG=v0.1.4-a1');
+    jest
+      .spyOn(TagCommand.prototype as any, 'confirmRunSuggestedCommand')
+      .mockResolvedValueOnce(false);
+    const forcePushSpy = jest
+      .spyOn(TagCommand.prototype as any, 'confirmForcePush')
+      .mockResolvedValueOnce(false);
+
+    const command = getTagCommand();
+
+    await (command as any).handleTag('v0.1.4-a1', { message: 'Release notes' });
+
+    expect(mockRunSuggestedCommand).not.toHaveBeenCalled();
+    expect(forcePushSpy).toHaveBeenCalledWith('v0.1.4-a1');
   });
 
   it('should cancel when user declines to replace existing local tag', async () => {
@@ -348,7 +413,7 @@ describe('TagCommand', () => {
     (GitService.remoteTagExists as jest.Mock).mockResolvedValueOnce(true);
     (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
-    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce({ success: true });
     (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
     jest
       .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
@@ -399,7 +464,7 @@ describe('TagCommand', () => {
     (GitService.deleteRemoteTag as jest.Mock).mockResolvedValueOnce(false); // User declined remote deletion
     (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
-    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(true);
+    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce({ success: true });
     (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin']);
 
     jest
@@ -423,7 +488,7 @@ describe('TagCommand', () => {
 
   it('should push to multiple remotes when user selects all', async () => {
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValue(true);
-    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue(true);
+    (GitService.pushTagToRemote as jest.Mock).mockResolvedValue({ success: true });
     (GitService.getRemotes as jest.Mock).mockResolvedValue(['origin', 'upstream']);
     confirmSpy.mockResolvedValueOnce(['origin', 'upstream']);
 
@@ -798,7 +863,7 @@ describe('TagCommand', () => {
     (GitService.deleteLocalTag as jest.Mock).mockResolvedValueOnce(true);
     (GitService.createAnnotatedTag as jest.Mock).mockResolvedValueOnce(true);
     (GitService.getRemotes as jest.Mock).mockResolvedValueOnce(['origin']);
-    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce(false);
+    (GitService.forcePushTag as jest.Mock).mockResolvedValueOnce({ success: false });
     jest
       .spyOn(TagCommand.prototype as any, 'confirmTagDelete')
       .mockResolvedValueOnce(true);
