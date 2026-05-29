@@ -162,6 +162,24 @@ export class AIService {
     return status === 503 || status === 502;
   }
 
+  private isConnectionError(error: unknown): boolean {
+    if (!error || typeof error !== 'object') return false;
+
+    const errorObj = error as {
+      code?: string;
+      message?: string;
+      cause?: { code?: string; message?: string };
+    };
+    const code = errorObj.code ?? errorObj.cause?.code;
+    const message = errorObj.message ?? errorObj.cause?.message;
+
+    if (code && ['ECONNRESET', 'ECONNREFUSED', 'EPIPE', 'ETIMEDOUT', 'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT'].includes(code)) {
+      return true;
+    }
+
+    return typeof message === 'string' && message.toLowerCase().includes('connection error');
+  }
+
   private async delay(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
   }
@@ -871,6 +889,18 @@ export class AIService {
           request,
           request.model,
           'Rate limited (429)',
+          { initialResponseTimeoutMs }
+        );
+        if (fallbackContent !== null) {
+          return fallbackContent;
+        }
+      }
+
+      if (this.isConnectionError(error)) {
+        const fallbackContent = await this.tryProviderFallback(
+          request,
+          request.model,
+          'Connection error',
           { initialResponseTimeoutMs }
         );
         if (fallbackContent !== null) {

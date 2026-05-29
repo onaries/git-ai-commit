@@ -631,6 +631,40 @@ describe('AIService', () => {
       });
     });
 
+    it('should retry with fallback model on connection errors', async () => {
+      const quietService = new AIService({
+        apiKey: 'test-api-key',
+        model: 'gpt-4',
+        fallbackModel: 'gpt-3.5',
+        fallbackApiKey: 'fallback-key',
+        fallbackBaseURL: 'https://fallback.test/v1',
+        verbose: false
+      });
+
+      const error = { message: 'Connection error.' };
+
+      (mockOpenai.chat.completions.create as jest.Mock)
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce(createMockStream('fix: use fallback on connection error'));
+
+      const request = {
+        model: 'gpt-4',
+        messages: [{ role: 'user' as const, content: 'test' }],
+        max_completion_tokens: 100
+      };
+
+      const result = await (quietService as any).createStreamingCompletion(request);
+      expect(result).toBe('fix: use fallback on connection error');
+
+      expect(mockOpenai.chat.completions.create).toHaveBeenNthCalledWith(2, {
+        model: 'gpt-3.5',
+        messages: [{ role: 'user', content: 'test' }],
+        max_completion_tokens: 100,
+        stream: true,
+        stream_options: { include_usage: true }
+      });
+    });
+
     it('should switch to a gemini fallback provider on 429 rate limit', async () => {
       const { GoogleGenAI } = require('@google/genai') as { GoogleGenAI: jest.Mock };
       const generateContentStream = jest.fn().mockResolvedValue(
