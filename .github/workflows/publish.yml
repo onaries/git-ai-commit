@@ -54,10 +54,11 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_NOTES: ${{ steps.release_notes.outputs.NOTES }}
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --notes "${{ steps.release_notes.outputs.NOTES }}" \
+            --notes "$RELEASE_NOTES" \
             --latest
 
       - name: Cleanup release branches
