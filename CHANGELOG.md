@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0 - 2026-10-20
+
+### New Features
+- Load repository commit instructions from `.git-ai-commit.md`, including when run from a subdirectory
+- Add edit and regenerate actions to the commit confirmation menu, with a fresh preview before committing
+- Use Git's native editor launcher and preserve drafts on editing/commit failure or cancellation
+
+### Bug Fixes
+- Separate cached messages by the full staged diff before truncation and model/provider generation settings
+- Invalidate cached messages when project commit rules change
+- Keep file statistics out of message-only output
+
+### Improvements
+- Limit generated claims to supplied evidence and avoid inventing test results, motives, or omitted diff content
+- Select commit types by primary purpose and clarify formatting-only and revert changes
+- Separate Korean and English examples and require a body only when it adds important information
+
+### Testing
+- Cover full-diff cache identity, generation settings, project rules, and interactive edit/regenerate flows
+- Exercise an actual test editor with paths containing spaces and quotes, including failure and empty-message recovery
+- Resolve existing lint errors in remote-hook tests and tag confirmation
+
 ## 1.2.5 - 2026-05-04
 
 ### New Features

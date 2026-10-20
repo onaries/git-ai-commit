@@ -1,6 +1,7 @@
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import { createHash } from 'crypto';
 
 import {
   COMMIT_MESSAGE_CACHE_PROMPT_VERSION,
@@ -113,5 +114,46 @@ describe('CommitMessageCacheService', () => {
     const second = CommitMessageCacheService.createKey({ ...input, prompt: 'mention tests' });
 
     expect(first).not.toBe(second);
+  });
+
+  it('separates full diffs, project rules, models and generation settings', () => {
+    const input = { diff: 'same truncated preview', diffHash: 'full-a', language: 'ko',
+      prompt: 'project rules', generation: { model: 'model-a', baseURL: 'https://api.test', reasoning: false } };
+    const key = CommitMessageCacheService.createKey(input);
+    const changes = [
+      { ...input, diffHash: 'full-b' },
+      { ...input, prompt: 'changed project rules' },
+      { ...input, generation: { ...input.generation, model: 'model-b' } },
+      { ...input, generation: { ...input.generation, baseURL: 'https://other.test' } },
+      { ...input, generation: { ...input.generation, reasoning: true } }
+    ];
+    for (const changed of changes) expect(CommitMessageCacheService.createKey(changed)).not.toBe(key);
+  });
+
+  it('does not reuse messages generated with the previous prompt version', async () => {
+    const input = { diff: 'diff --git a/file b/file', language: 'ko' };
+    const newKey = CommitMessageCacheService.createKey(input);
+    await CommitMessageCacheService.save(newKey, 'feat: old prompt output');
+    const cachePath = path.join(tempDir, 'commit-message-cache.jsonl');
+    const entry = JSON.parse(await fs.readFile(cachePath, 'utf-8'));
+    const previousPromptVersion = COMMIT_MESSAGE_CACHE_PROMPT_VERSION - 1;
+    const oldKey = createHash('sha256').update(JSON.stringify({
+      version: 1,
+      promptVersion: previousPromptVersion,
+      project: entry.project,
+      language: input.language,
+      prompt: '',
+      diff: input.diff
+    })).digest('hex');
+    const oldEntry = {
+      ...entry,
+      promptVersion: previousPromptVersion,
+      key: oldKey
+    };
+    await fs.writeFile(cachePath, `${JSON.stringify(oldEntry)}\n`, 'utf-8');
+
+    expect(newKey).not.toBe(oldKey);
+    await expect(CommitMessageCacheService.find(newKey)).resolves.toBeUndefined();
+    expect(await fs.readFile(cachePath, 'utf-8')).toContain(oldEntry.message);
   });
 });

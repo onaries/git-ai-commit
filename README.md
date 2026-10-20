@@ -57,7 +57,36 @@ git-ai-commit commit --push
 git-ai-commit commit --message-only --prompt "스코프는 패키지 디렉터리명으로 설정"
 ```
 
-The command previews the AI-generated message, then asks `Proceed with git commit? (y/n)` before creating the commit. Use `--push` to push after a successful commit, or set auto push through the config command (see below). You can also provide additional instructions for this run using `--prompt "<text>"`; the text is appended to the AI's system prompt to guide the style/content.
+The command previews the AI-generated message and offers four actions:
+
+- `y`: create the commit (`yes` is also accepted).
+- `e`: edit the message using your Git editor, then preview it again before committing.
+- `r`: generate a fresh message without reusing the cache, then preview it again.
+- `n`, an empty answer, or end of input: cancel without committing.
+
+The editor follows Git's `GIT_EDITOR`, `core.editor`, `VISUAL`, and `EDITOR` settings.
+An editor failure or an empty edited message stops the command and preserves the draft at the displayed path.
+Edited drafts are also preserved when committing fails or the operation is cancelled; they are removed only after a successful commit.
+Manual edits apply to the current run; the cache retains the latest AI-generated message.
+Use `--push` to push after a confirmed commit, or set auto push through the config command (see below).
+`--message-only` prints the message without the action menu. You can also provide instructions for this run using `--prompt "<text>"`.
+
+### Project Commit Rules
+
+Create `.git-ai-commit.md` at the repository root to share commit language and style preferences:
+
+```markdown
+Write commit descriptions and bodies in Korean.
+Use the affected package name as the scope.
+Keep the header concise; add a body only for important details missing from it.
+```
+
+Rules are loaded even when the command runs in a repository subdirectory. They apply to commit generation only.
+Explicit `--prompt` instructions take precedence over project rules, which may override the configured language and style defaults.
+Output format and evidence rules still apply. Provider settings and API keys remain in your personal configuration; do not put credentials in the rules file.
+
+The commit cache distinguishes the full staged diff before truncation, effective instructions (including project rules), language, and model/provider generation settings.
+Changing a model, project rule, or an omitted part of a large diff therefore generates a new message.
 
 During development you can run the CLI without building by using the dev script:
 

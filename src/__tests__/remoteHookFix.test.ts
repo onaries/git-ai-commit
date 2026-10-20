@@ -7,6 +7,7 @@ jest.mock('child_process', () => ({
 import { exec } from 'child_process';
 
 const mockExec = exec as unknown as jest.Mock;
+type ExecCallback = (error: Error | null, result: { stdout: string; stderr: string }) => void;
 
 describe('parseSuggestedCommand', () => {
   it('extracts an indented make command from rejected push output', () => {
@@ -85,7 +86,7 @@ describe('runSuggestedCommand', () => {
   });
 
   it('resolves success with combined output', async () => {
-    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
+    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
       cb(null, { stdout: 'done\n', stderr: '' });
     });
 
@@ -96,7 +97,7 @@ describe('runSuggestedCommand', () => {
   });
 
   it('resolves failure and captures error output', async () => {
-    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: Function) => {
+    mockExec.mockImplementation((_cmd: string, _opts: unknown, cb: ExecCallback) => {
       const err: any = new Error('command failed');
       err.stdout = '';
       err.stderr = 'make: *** No rule to make target';

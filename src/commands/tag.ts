@@ -715,7 +715,7 @@ export class TagCommand {
     return normalized === 'y' || normalized === 'yes';
   }
 
-  private async confirmRunSuggestedCommand(command: string): Promise<boolean> {
+  private async confirmRunSuggestedCommand(): Promise<boolean> {
     if (this.autoConfirm) return true;
     const rl = readline.createInterface({
       input: process.stdin,
@@ -751,7 +751,7 @@ export class TagCommand {
     console.log(`\n💡 Remote rejected the push but suggested a fix command:`);
     console.log(`   ${suggested}`);
 
-    const shouldRun = await this.confirmRunSuggestedCommand(suggested);
+    const shouldRun = await this.confirmRunSuggestedCommand();
     if (!shouldRun) {
       return false;
     }

@@ -2,6 +2,7 @@ import fs from 'fs';
 import { promises as fsPromises } from 'fs';
 import os from 'os';
 import path from 'path';
+import { execFileSync } from 'child_process';
 
 export type SupportedLanguage = 'ko' | 'en';
 
@@ -55,6 +56,20 @@ const DEFAULT_CO_AUTHOR = 'git-ai-commit <git-ai-commit@users.noreply.github.com
 const CONFIG_SCHEMA_URL = 'https://raw.githubusercontent.com/onaries/git-ai-commit/main/src/schema/config.schema.json';
 
 export class ConfigService {
+  static getProjectInstructions(): string {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      encoding: 'utf-8',
+      stdio: ['ignore', 'pipe', 'pipe']
+    }).trim();
+    const filename = path.join(root, '.git-ai-commit.md');
+    try {
+      return fs.readFileSync(filename, 'utf-8').trim();
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return '';
+      throw new Error(`Failed to read project commit rules: ${filename}`);
+    }
+  }
+
   private static getConfigFilePath(): string {
     const overridePath = process.env.GIT_AI_COMMIT_CONFIG_PATH;
     if (overridePath) {

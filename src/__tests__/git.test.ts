@@ -1,5 +1,6 @@
 import { exec, execFile } from 'child_process';
 import { GitService } from '../commands/git';
+import { createHash } from 'crypto';
 
 jest.mock('child_process', () => ({
   exec: jest.fn(),
@@ -65,6 +66,16 @@ describe('GitService', () => {
   });
 
   describe('getStagedDiff', () => {
+    it('hashes changes beyond the truncated preview', async () => {
+      const diff = buildSection('long.ts', 250);
+      resolveExecFile(diff + '\n+first omitted change');
+      resolveExecFile(diff + '\n+other omitted change');
+      const first = await GitService.getStagedDiff();
+      const second = await GitService.getStagedDiff();
+      expect(first.diff).toBe(second.diff);
+      expect(first.diffHash).not.toBe(second.diffHash);
+    });
+
     it('returns success with diff when staged changes exist', async () => {
       resolveExecFile('diff --git a/a.ts b/a.ts\n+ok\n');
 
@@ -75,7 +86,8 @@ describe('GitService', () => {
       }, expect.any(Function));
       expect(result).toEqual({
         success: true,
-        diff: 'diff --git a/a.ts b/a.ts\n+ok\n'
+        diff: 'diff --git a/a.ts b/a.ts\n+ok\n',
+        diffHash: createHash('sha256').update('diff --git a/a.ts b/a.ts\n+ok\n').digest('hex')
       });
     });
 

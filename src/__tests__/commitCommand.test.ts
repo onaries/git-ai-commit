@@ -2,6 +2,11 @@ import { CommitCommand } from '../commands/commit';
 import { GitService } from '../commands/git';
 import { ConfigService } from '../commands/config';
 import readline from 'readline';
+import { EventEmitter } from 'events';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { editCommitMessage } from '../commands/editor';
 import { CommitMessageCacheService } from '../commands/commitCache';
 
 const mockGenerateCommitMessage = jest.fn();
@@ -31,10 +36,14 @@ jest.mock('../commands/ai', () => ({
 
 jest.mock('../commands/config', () => ({
   ConfigService: {
+    getProjectInstructions: jest.fn().mockReturnValue(''),
     getConfig: jest.fn(),
     validateConfig: jest.fn()
   }
 }));
+
+jest.mock('../commands/editor', () => ({ editCommitMessage: jest.fn() }));
+jest.mock('../commands/log', () => ({ LogService: { append: jest.fn().mockResolvedValue(undefined) } }));
 
 jest.mock('../commands/commitCache', () => ({
   CommitMessageCacheService: {
@@ -65,7 +74,8 @@ describe('CommitCommand', () => {
 
     (GitService.getStagedDiff as jest.Mock).mockResolvedValue({
       success: true,
-      diff: 'diff --git a/file b/file'
+      diff: 'diff --git a/file b/file',
+      diffHash: 'full-diff-hash'
     });
 
     mockGenerateCommitMessage.mockResolvedValue({
@@ -86,7 +96,7 @@ describe('CommitCommand', () => {
     const command = createCommand();
     const confirmSpy = jest
       .spyOn(command as any, 'confirmCommit')
-      .mockResolvedValue(true);
+      .mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -98,7 +108,7 @@ describe('CommitCommand', () => {
 
   it('should skip commit when user declines confirmation', async () => {
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('cancel');
 
     await (command as any).handleCommit({});
 
@@ -109,14 +119,16 @@ describe('CommitCommand', () => {
 
   it('should save generated message to cache before user confirmation', async () => {
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('cancel');
 
     await (command as any).handleCommit({ prompt: 'mention tests' });
 
     expect(CommitMessageCacheService.createKey).toHaveBeenCalledWith({
       diff: 'diff --git a/file b/file',
+      diffHash: 'full-diff-hash',
       prompt: 'mention tests',
-      language: 'ko'
+      language: 'ko',
+      generation: expect.objectContaining({ model: 'test-model', baseURL: 'https://api.test' })
     });
     expect(CommitMessageCacheService.save).toHaveBeenCalledWith(
       'cache-key-12345678',
@@ -131,7 +143,7 @@ describe('CommitCommand', () => {
     const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     try {
       await (command as any).handleCommit({});
@@ -151,7 +163,7 @@ describe('CommitCommand', () => {
 
   it('should skip cache reads and writes when cache is disabled', async () => {
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('cancel');
 
     await (command as any).handleCommit({ cache: false });
 
@@ -168,7 +180,7 @@ describe('CommitCommand', () => {
     (CommitMessageCacheService.find as jest.Mock).mockResolvedValue(cachedMessageHit);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(false);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('cancel');
 
     await (command as any).handleCommit({ refresh: true });
 
@@ -182,6 +194,70 @@ describe('CommitCommand', () => {
       'cache-key-12345678',
       'feat: test commit'
     );
+  });
+
+  it('includes project rules and gives per-run instructions explicit precedence', async () => {
+    (ConfigService.getProjectInstructions as jest.Mock).mockReturnValueOnce('Write in English');
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('cancel');
+    await (command as any).handleCommit({ prompt: 'Write in Korean' });
+    const prompt = '## Project instructions (.git-ai-commit.md)\nWrite in English\n\n## Per-run instructions\nWrite in Korean';
+    expect(mockGenerateCommitMessage).toHaveBeenCalledWith('diff --git a/file b/file', prompt);
+    expect(CommitMessageCacheService.createKey).toHaveBeenCalledWith(expect.objectContaining({ prompt }));
+  });
+
+  it('edits without another model call and commits only after a new confirmation', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gac-unit-draft-'));
+    const draftPath = path.join(directory, 'COMMIT_EDITMSG');
+    fs.writeFileSync(draftPath, 'fix: edited message');
+    (editCommitMessage as jest.Mock).mockReturnValueOnce({ message: 'fix: edited message', draftPath });
+    (GitService.createCommit as jest.Mock).mockResolvedValue(true);
+    const command = createCommand();
+    const confirm = jest.spyOn(command as any, 'confirmCommit')
+      .mockResolvedValueOnce('edit').mockResolvedValueOnce('commit');
+    await (command as any).handleCommit({});
+    expect(editCommitMessage).toHaveBeenCalledWith('feat: test commit');
+    expect(confirm).toHaveBeenCalledTimes(2);
+    expect(mockGenerateCommitMessage).toHaveBeenCalledTimes(1);
+    expect(GitService.createCommit).toHaveBeenCalledWith('fix: edited message');
+    expect(fs.existsSync(draftPath)).toBe(false);
+  });
+
+  it('preserves edited drafts if Git rejects the commit', async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'gac-unit-draft-'));
+    const draftPath = path.join(directory, 'COMMIT_EDITMSG');
+    fs.writeFileSync(draftPath, 'fix: valuable manual edit');
+    (editCommitMessage as jest.Mock).mockReturnValueOnce({ message: 'fix: valuable manual edit', draftPath });
+    (GitService.createCommit as jest.Mock).mockResolvedValueOnce(false);
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValueOnce('edit').mockResolvedValueOnce('commit');
+    try {
+      await (command as any).handleCommit({});
+      expect(fs.readFileSync(draftPath, 'utf-8')).toBe('fix: valuable manual edit');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+  });
+
+  it('regenerates a cached message and allows cancellation without committing', async () => {
+    (CommitMessageCacheService.find as jest.Mock).mockResolvedValueOnce(cachedMessageHit);
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit')
+      .mockResolvedValueOnce('regenerate').mockResolvedValueOnce('cancel');
+    await (command as any).handleCommit({});
+    expect(mockGenerateCommitMessage).toHaveBeenCalledTimes(1);
+    expect(CommitMessageCacheService.find).toHaveBeenCalledTimes(1);
+    expect(CommitMessageCacheService.save).toHaveBeenCalledWith('cache-key-12345678', 'feat: test commit');
+    expect(GitService.createCommit).not.toHaveBeenCalled();
+  });
+
+  it('does not commit or push when editing fails', async () => {
+    (editCommitMessage as jest.Mock).mockImplementationOnce(() => { throw new Error('Editor failed'); });
+    const command = createCommand();
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValueOnce('edit');
+    await (command as any).handleCommit({ push: true });
+    expect(GitService.createCommit).not.toHaveBeenCalled();
+    expect(GitService.push).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
   it('should output message only without git actions when message-only option is set', async () => {
@@ -208,7 +284,7 @@ describe('CommitCommand', () => {
     (GitService.push as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({ push: true });
 
@@ -222,7 +298,7 @@ describe('CommitCommand', () => {
     (GitService.hasModifiedFiles as jest.Mock).mockResolvedValue(false);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -238,7 +314,7 @@ describe('CommitCommand', () => {
     (GitService.restageModifiedFiles as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -255,7 +331,7 @@ describe('CommitCommand', () => {
     (GitService.restageModifiedFiles as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -271,7 +347,7 @@ describe('CommitCommand', () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -285,7 +361,7 @@ describe('CommitCommand', () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -299,7 +375,7 @@ describe('CommitCommand', () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -318,7 +394,7 @@ describe('CommitCommand', () => {
     (GitService.createCommit as jest.Mock).mockResolvedValue(true);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -332,7 +408,7 @@ describe('CommitCommand', () => {
     (GitService.push as jest.Mock).mockResolvedValue(false);
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({ push: true });
 
@@ -352,7 +428,7 @@ describe('CommitCommand', () => {
     });
 
     const command = createCommand();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -362,33 +438,55 @@ describe('CommitCommand', () => {
   });
 
   describe('confirmCommit', () => {
-    it('returns true for y', async () => {
+    it('cancels on end of input without waiting for a response', async () => {
+      const rl = Object.assign(new EventEmitter(), { question: jest.fn(), close: jest.fn() });
+      const spy = jest.spyOn(readline, 'createInterface').mockReturnValue(rl as unknown as readline.Interface);
+      try {
+        const result = (createCommand() as any).confirmCommit();
+        rl.emit('close');
+        expect(await result).toBe('cancel');
+      } finally { spy.mockRestore(); }
+    });
+
+    it.each([['e', 'edit'], ['r', 'regenerate'], ['', 'cancel']])('maps %s to %s', async (answer, expected) => {
+      const spy = jest.spyOn(readline, 'createInterface').mockReturnValue({
+        question: jest.fn((_prompt, callback) => callback(answer)),
+        close: jest.fn(), once: jest.fn()
+      } as any);
+      try {
+        expect(await (createCommand() as any).confirmCommit()).toBe(expected);
+      } finally { spy.mockRestore(); }
+    });
+
+    it('returns commit for y', async () => {
       const createInterfaceSpy = jest.spyOn(readline, 'createInterface').mockReturnValue({
         question: jest.fn((_prompt, callback) => callback('y')),
-        close: jest.fn()
+        close: jest.fn(),
+        once: jest.fn()
       } as any);
 
       try {
         const command = createCommand();
         const result = await (command as any).confirmCommit();
 
-        expect(result).toBe(true);
+        expect(result).toBe('commit');
       } finally {
         createInterfaceSpy.mockRestore();
       }
     });
 
-    it('returns false for n', async () => {
+    it('returns cancel for n', async () => {
       const createInterfaceSpy = jest.spyOn(readline, 'createInterface').mockReturnValue({
         question: jest.fn((_prompt, callback) => callback('n')),
-        close: jest.fn()
+        close: jest.fn(),
+        once: jest.fn()
       } as any);
 
       try {
         const command = createCommand();
         const result = await (command as any).confirmCommit();
 
-        expect(result).toBe(false);
+        expect(result).toBe('cancel');
       } finally {
         createInterfaceSpy.mockRestore();
       }

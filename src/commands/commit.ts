@@ -8,6 +8,9 @@ import { AIService, AIServiceConfig } from "./ai";
 import { ConfigService } from "./config";
 import { LogService } from "./log";
 import { CommitMessageCacheService } from "./commitCache";
+import { editCommitMessage } from "./editor";
+
+type CommitAction = 'commit' | 'edit' | 'regenerate' | 'cancel';
 
 export interface CommitOptions {
   apiKey?: string;
@@ -147,6 +150,10 @@ export class CommitCommand {
 
   private async handleCommit(options: CommitOptions) {
     const start = Date.now();
+    const editedDrafts: string[] = [];
+    const reportEditedDrafts = () => {
+      for (const draft of editedDrafts) console.error(`Edited draft saved at ${draft}`);
+    };
     const safeArgs = {
       ...options,
       apiKey: options.apiKey ? "***" : undefined,
@@ -186,18 +193,37 @@ export class CommitCommand {
           model: mergedModel,
         });
         process.exit(1);
+        return;
       }
 
       const stat = await GitService.getStagedStat();
       if (stat) {
-        console.log(stat);
+        log(stat);
       }
 
+      const projectInstructions = ConfigService.getProjectInstructions();
+      const prompt = projectInstructions
+        ? `## Project instructions (.git-ai-commit.md)\n${projectInstructions}${options.prompt ? `\n\n## Per-run instructions\n${options.prompt}` : ''}`
+        : options.prompt;
+      const generation = {
+        model: mergedModel,
+        mode: existingConfig.mode,
+        baseURL: mergedBaseURL,
+        fallbackModel: existingConfig.fallbackModel,
+        fallbackMode: existingConfig.fallbackMode,
+        fallbackBaseURL: existingConfig.fallbackBaseURL,
+        providerPriority: existingConfig.providerPriority,
+        reasoning: existingConfig.reasoning,
+        reasoningEffort: existingConfig.reasoningEffort,
+        maxCompletionTokens: existingConfig.maxCompletionTokens,
+      };
       const cacheKey = cacheEnabled
         ? CommitMessageCacheService.createKey({
           diff: diffResult.diff!,
-          prompt: options.prompt,
+          diffHash: diffResult.diffHash,
+          prompt,
           language: existingConfig.language,
+          generation,
         })
         : undefined;
       const cacheHit = cacheKey && !refreshCache
@@ -207,96 +233,75 @@ export class CommitCommand {
 
       if (cacheHit && cacheKey) {
         log(`Using cached commit message (${cacheKey.slice(0, 8)}, saved ${this.formatCacheDate(cacheHit.timestamp)}, expires ${this.formatCacheDate(cacheHit.expiresAt)})...`);
-      } else {
-        if (cacheKey && refreshCache) {
-          log(`Refreshing cached commit message (${cacheKey.slice(0, 8)})...`);
+      } else if (cacheKey && refreshCache) {
+        log(`Refreshing cached commit message (${cacheKey.slice(0, 8)})...`);
+      }
+
+      while (true) {
+        if (message === undefined) {
+          ConfigService.validateConfig({
+            apiKey: mergedApiKey,
+            language: existingConfig.language,
+          });
+
+          const aiConfig: AIServiceConfig = {
+            ...generation,
+            apiKey: mergedApiKey!,
+            fallbackApiKey: existingConfig.fallbackApiKey,
+            language: existingConfig.language,
+            verbose: !messageOnly,
+          };
+
+          log("Generating commit message...");
+
+          const aiService = new AIService(aiConfig);
+          const aiResult = await aiService.generateCommitMessage(diffResult.diff!, prompt);
+
+          if (!aiResult.success) throw new Error(aiResult.error || 'Failed to generate commit message');
+          if (typeof aiResult.message !== 'string' || !aiResult.message.trim()) {
+            throw new Error('Failed to generate commit message');
+          }
+
+          message = aiResult.message;
+          if (cacheKey) await CommitMessageCacheService.save(cacheKey, message);
         }
 
-        ConfigService.validateConfig({
-          apiKey: mergedApiKey,
-          language: existingConfig.language,
-        });
-
-        const aiConfig: AIServiceConfig = {
-          apiKey: mergedApiKey!,
-          baseURL: mergedBaseURL,
-          model: mergedModel,
-          fallbackModel: existingConfig.fallbackModel,
-          fallbackMode: existingConfig.fallbackMode,
-          fallbackApiKey: existingConfig.fallbackApiKey,
-          fallbackBaseURL: existingConfig.fallbackBaseURL,
-          providerPriority: existingConfig.providerPriority,
-          reasoning: existingConfig.reasoning,
-          reasoningEffort: existingConfig.reasoningEffort,
-          language: existingConfig.language,
-          verbose: !messageOnly,
-          mode: existingConfig.mode,
-          maxCompletionTokens: existingConfig.maxCompletionTokens,
-        };
-
-        log("Generating commit message...");
-
-        const aiService = new AIService(aiConfig);
-        const aiResult = await aiService.generateCommitMessage(
-          diffResult.diff!,
-          options.prompt
-        );
-
-        if (!aiResult.success) {
-          console.error("Error:", aiResult.error);
+        const finalMessage = existingConfig.coAuthor
+          ? `${message}\n\nCo-authored-by: ${existingConfig.coAuthor}`
+          : message;
+        if (messageOnly) {
+          console.log(finalMessage);
           await LogService.append({
             command: "commit",
-            args: safeArgs,
-            status: "failure",
-            details: aiResult.error,
+            args: { ...safeArgs, messageOnly: true },
+            status: "success",
+            details: "message-only output",
             durationMs: Date.now() - start,
             model: mergedModel,
           });
-          process.exit(1);
           return;
         }
 
-        if (typeof aiResult.message !== "string") {
-          console.error("Error: Failed to generate commit message");
-          process.exit(1);
-          return;
+        console.log("\nGenerated commit message:");
+        console.log(finalMessage);
+        const action = await this.confirmCommit();
+        if (action === 'edit') {
+          const edited = editCommitMessage(message);
+          message = edited.message;
+          editedDrafts.push(edited.draftPath);
+          continue;
+        }
+        if (action === 'regenerate') {
+          message = undefined;
+          continue;
+        }
+        if (action === 'commit') {
+          message = finalMessage;
+          break;
         }
 
-        message = aiResult.message;
-        if (cacheKey) {
-          await CommitMessageCacheService.save(cacheKey, message);
-        }
-      }
-
-      if (typeof message !== "string") {
-        console.error("Error: Failed to generate commit message");
-        process.exit(1);
-        return;
-      }
-
-      if (existingConfig.coAuthor) {
-        message = `${message}\n\nCo-authored-by: ${existingConfig.coAuthor}`;
-      }
-      if (messageOnly) {
-        console.log(message);
-        await LogService.append({
-          command: "commit",
-          args: { ...safeArgs, messageOnly: true },
-          status: "success",
-          details: "message-only output",
-          durationMs: Date.now() - start,
-          model: mergedModel,
-        });
-        return;
-      }
-
-      console.log("\nGenerated commit message:");
-      console.log(message);
-
-      const confirmed = await this.confirmCommit();
-
-      if (!confirmed) {
         console.log("Commit cancelled by user.");
+        reportEditedDrafts();
         await LogService.append({
           command: "commit",
           args: safeArgs,
@@ -322,6 +327,14 @@ export class CommitCommand {
 
       if (commitSuccess) {
         console.log("✅ Commit created successfully!");
+        for (const draft of editedDrafts) {
+          try {
+            fs.rmSync(path.dirname(draft), { recursive: true, force: true });
+          } catch {
+            console.warn(`Commit succeeded; edited draft remains at ${draft}`);
+          }
+        }
+        editedDrafts.length = 0;
 
         const pushRequested = Boolean(options.push);
         const pushFromConfig = !pushRequested && existingConfig.autoPush;
@@ -353,6 +366,7 @@ export class CommitCommand {
         }
       } else {
         console.error("❌ Failed to create commit");
+        reportEditedDrafts();
         await LogService.append({
           command: "commit",
           args: safeArgs,
@@ -362,6 +376,7 @@ export class CommitCommand {
           model: mergedModel,
         });
         process.exit(1);
+        return;
       }
       await LogService.append({
         command: "commit",
@@ -373,6 +388,7 @@ export class CommitCommand {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       console.error("Error:", message);
+      reportEditedDrafts();
       await LogService.append({
         command: "commit",
         args: safeArgs,
@@ -385,20 +401,24 @@ export class CommitCommand {
     }
   }
 
-  private async confirmCommit(): Promise<boolean> {
+  private async confirmCommit(): Promise<CommitAction> {
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout,
     });
 
     const answer: string = await new Promise((resolve) => {
-      rl.question("Proceed with git commit? (y/n): ", resolve);
+      rl.question("[y] Commit / [e] Edit / [r] Regenerate / [n] Cancel: ", resolve);
+      rl.once('close', () => resolve('n'));
     });
 
     rl.close();
 
     const normalized = answer.trim().toLowerCase();
-    return normalized === "y" || normalized === "yes";
+    if (['y', 'yes', 'commit'].includes(normalized)) return 'commit';
+    if (['e', 'edit'].includes(normalized)) return 'edit';
+    if (['r', 'regenerate'].includes(normalized)) return 'regenerate';
+    return 'cancel';
   }
 
   private formatCacheDate(value: string): string {

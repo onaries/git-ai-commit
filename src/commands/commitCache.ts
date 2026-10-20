@@ -3,16 +3,21 @@ import { execFileSync } from 'child_process';
 import { promises as fs } from 'fs';
 import os from 'os';
 import path from 'path';
+import type { AIServiceConfig } from './ai';
 
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const CACHE_TTL_DAYS = 7;
 
-export const COMMIT_MESSAGE_CACHE_PROMPT_VERSION = 2;
+export const COMMIT_MESSAGE_CACHE_PROMPT_VERSION = 4;
 
 interface CacheKeyInput {
   diff: string;
+  diffHash?: string;
   prompt?: string;
   language: string;
+  generation?: Pick<AIServiceConfig,
+    'model' | 'mode' | 'baseURL' | 'fallbackModel' | 'fallbackMode' | 'fallbackBaseURL' |
+    'providerPriority' | 'reasoning' | 'reasoningEffort' | 'maxCompletionTokens'>;
 }
 
 interface CommitMessageCacheEntry {
@@ -110,7 +115,8 @@ export class CommitMessageCacheService {
       project,
       language: input.language,
       prompt: input.prompt ?? '',
-      diff: input.diff
+      diff: input.diffHash ?? input.diff,
+      generation: input.generation
     });
 
     return createHash('sha256').update(payload).digest('hex');

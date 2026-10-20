@@ -26,6 +26,7 @@ jest.mock('../commands/ai', () => ({
 
 jest.mock('../commands/config', () => ({
   ConfigService: {
+    getProjectInstructions: jest.fn().mockReturnValue(''),
     getConfig: jest.fn().mockReturnValue({ apiKey: 'key', language: 'en' }),
     validateConfig: jest.fn()
   }
@@ -75,7 +76,7 @@ describe('Pre-commit Hook Tests', () => {
       }
     }));
 
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -86,7 +87,7 @@ describe('Pre-commit Hook Tests', () => {
     mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
     jest.spyOn(command as any, 'isCommandAvailable').mockImplementation((...args: unknown[]) => args[0] === 'pre-commit');
 
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -138,7 +139,7 @@ describe('Pre-commit Hook Tests', () => {
     }));
     jest.spyOn(command as any, 'isCommandAvailable').mockImplementation((...args: unknown[]) => args[0] === 'pre-commit');
 
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -152,7 +153,7 @@ describe('Pre-commit Hook Tests', () => {
     jest.spyOn(command as any, 'isCommandAvailable').mockReturnValue(false);
 
     const warnSpy = jest.spyOn(console, 'warn').mockImplementation();
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({});
 
@@ -170,7 +171,7 @@ describe('Pre-commit Hook Tests', () => {
       scripts: { 'pre-commit': 'echo test' }
     }));
 
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({ verify: false });
 
@@ -180,7 +181,7 @@ describe('Pre-commit Hook Tests', () => {
   it('should skip pre-commit hooks when --no-verify is used', async () => {
     mockFsExists.mockImplementation((p: string) => p.endsWith('.pre-commit-config.yaml'));
 
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({ verify: false });
 
@@ -193,7 +194,7 @@ describe('Pre-commit Hook Tests', () => {
       scripts: { 'pre-commit': 'test' }
     }));
 
-    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue(true);
+    jest.spyOn(command as any, 'confirmCommit').mockResolvedValue('commit');
 
     await (command as any).handleCommit({ verify: false });
 

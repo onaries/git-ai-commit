@@ -1,5 +1,6 @@
 import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
+import { createHash } from 'crypto';
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -80,6 +81,7 @@ const truncateDiff = (diff: string): string => truncateDiffByTotal(truncateDiffB
 export interface GitDiffResult {
   success: boolean;
   diff?: string;
+  diffHash?: string;
   error?: string;
 }
 
@@ -135,7 +137,8 @@ export class GitService {
       
       return {
         success: true,
-        diff
+        diff,
+        diffHash: createHash('sha256').update(stdout).digest('hex')
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to get git diff';
